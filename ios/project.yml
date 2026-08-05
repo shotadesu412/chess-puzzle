@@ -1,0 +1,47 @@
+# XcodeGen の定義ファイル。`xcodegen generate` で .xcodeproj を作り直せる。
+# .xcodeproj は生成物なので、設定を変えたいときはこのファイルを編集すること。
+
+name: ChessPuzzle
+
+options:
+  bundleIdPrefix: com.shota
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: 7Z2ZRB6V2J
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "5.0"
+
+targets:
+  ChessPuzzle:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.shota.chesspuzzle
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        # Info.plist はファイルを持たず、下の INFOPLIST_KEY_* から自動生成させる
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIStatusBarStyle: UIStatusBarStyleLightContent
+        INFOPLIST_KEY_CFBundleDisplayName: チェスパズル
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+    postBuildScripts:
+      # Web版の資産をアプリのバンドルにコピーする。
+      # 元ファイルを1か所（リポジトリ直下）に保つため、複製ではなく毎回コピーする。
+      - name: Copy web assets
+        basedOnDependencyAnalysis: false
+        script: |
+          set -e
+          DEST="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Web"
+          rm -rf "$DEST"
+          mkdir -p "$DEST"
+          cp "$SRCROOT/../index.html" "$DEST/"
+          cp "$SRCROOT/../style.css" "$DEST/"
+          cp -R "$SRCROOT/../src" "$DEST/src"

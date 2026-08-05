@@ -1,0 +1,11 @@
+# Render の設定。Web版は完全に静的（ビルド不要）なので、
+# リポジトリのルートをそのまま配信するだけでよい。
+#
+# 注意: SPA 用の catch-all リライトは入れないこと。
+# src/*.js が index.html にすり替わってゲームが起動しなくなる。
+services:
+  - type: web
+    name: chess-puzzle
+    runtime: static
+    buildCommand: ''
+    staticPublishPath: .

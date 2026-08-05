@@ -1,0 +1,11 @@
+node_modules/
+
+# ローカル環境のもの
+.DS_Store
+.claude/settings.local.json
+
+# iOS（生成物。設定は ios/project.yml が正、xcodegen で作り直せる）
+ios/build/
+ios/ChessPuzzle.xcodeproj/
+ios/*.xcworkspace/
+xcuserdata/

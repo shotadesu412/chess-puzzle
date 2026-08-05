@@ -1,0 +1,452 @@
+:root {
+  --bg: #1b1a17;
+  --panel: #26241f;
+  --text: #ece7dd;
+  --muted: #9c9488;
+  --light-square: #d9c7a7;
+  --dark-square: #9c7c56;
+  --accent: #f0b429;
+
+  /* オーラの色。数字を出さずにランクを見分けるためのもの。
+     消えるのは「同じ色 かつ 同じランク」なので、色（白/黒）でも分けている。
+     ランクごとに同系色にしてあるので、まず色味でランク、明るさで白黒が読める。 */
+  --rank1-white: 120, 226, 255;  /* 明るい水色 */
+  --rank1-black: 66, 108, 255;   /* 濃い青 */
+  --rank2-white: 190, 244, 110;  /* 黄緑 */
+  --rank2-black: 26, 190, 92;    /* 濃い緑 */
+  --rank3-white: 255, 140, 220;  /* ピンク */
+  --rank3-black: 168, 85, 247;   /* 濃い紫 */
+  --wild-white: 255, 240, 170;   /* 白金 */
+  --wild-black: 255, 150, 20;    /* 濃い橙 */
+
+  /* マスのハイライト。盤の色（くすんだ茶系）と彩度で差がつくよう鮮やかにする */
+  --movable-bg: #f5b60f;   /* 移動できるマス */
+  --selected-bg: #1ea8e0;  /* 選択中のマス */
+  --royal-bg: #fff0b8;     /* レア役が決まる移動先 */
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 24px 16px 48px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+}
+
+.app {
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+h1 {
+  font-size: 20px;
+  margin: 0;
+  letter-spacing: 0.04em;
+}
+
+.stats {
+  display: flex;
+  gap: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.stat-label {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.quota {
+  margin-top: 14px;
+}
+
+.quota-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.quota-head strong {
+  color: var(--text);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.quota-bar {
+  height: 6px;
+  background: #35322b;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.quota-fill {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.25s ease;
+}
+
+.quota-fill.reached {
+  background: #7bc86c;
+}
+
+/* 「あと1手でレア役」の予告 */
+.hint {
+  height: 20px;
+  margin: 10px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffd977;
+  opacity: 0;
+  transform: translateY(-3px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.hint.visible {
+  opacity: 1;
+  transform: none;
+}
+
+.message {
+  height: 22px;
+  margin: 6px 0 8px;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* 消えたカタマリの上に出る得点。少し上へ流れながら消える */
+.pop {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: calc(min(100vw - 32px, 560px) / var(--size, 8) * 0.36);
+  font-weight: 800;
+  color: #ffffff;
+  -webkit-text-stroke: 0.09em #16130f;
+  paint-order: stroke fill;
+  pointer-events: none;
+  white-space: nowrap;
+  animation: pop-up 0.9s ease-out forwards;
+}
+
+.pop.royal {
+  color: #ffe066;
+  font-size: calc(min(100vw - 32px, 560px) / var(--size, 8) * 0.46);
+}
+
+@keyframes pop-up {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.6); }
+  25% { opacity: 1; transform: translate(-50%, -70%) scale(1.1); }
+  60% { opacity: 1; transform: translate(-50%, -85%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -120%) scale(0.95); }
+}
+
+/* レア役の名前を画面中央に大きく出す。滅多に出ないので派手にする */
+.royal-banner {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 10;
+  /* 盤面が色で埋まっているので、背後を暗くしないと文字が読めない */
+  background: radial-gradient(
+    closest-side,
+    rgba(0, 0, 0, 0.88),
+    rgba(0, 0, 0, 0.7) 45%,
+    rgba(0, 0, 0, 0) 80%
+  );
+}
+
+.royal-banner.show {
+  animation: royal-banner 1.6s ease-out forwards;
+}
+
+.royal-banner span {
+  font-size: clamp(24px, 8.4vw, 58px);
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  color: #fff3c4;
+  text-shadow:
+    0 0 18px rgba(255, 200, 60, 1),
+    0 0 44px rgba(255, 160, 20, 0.85),
+    0 3px 8px rgba(0, 0, 0, 0.85);
+}
+
+@keyframes royal-banner {
+  0% { opacity: 0; transform: scale(0.55); }
+  18% { opacity: 1; transform: scale(1.12); }
+  30% { transform: scale(1); }
+  75% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.06); }
+}
+
+/* ゲームオーバー中は盤面を触れないことを見た目で示す */
+.board.over {
+  filter: grayscale(0.7) brightness(0.7);
+}
+
+.board.over .cell {
+  cursor: default;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.controls-note {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* クイーン・キング揃い（激レア）だけ派手に見せる */
+.message.royal {
+  color: #fff3c4;
+  font-size: 18px;
+  text-shadow: 0 0 12px rgba(240, 180, 41, 0.9);
+  animation: royal-pop 0.4s ease;
+}
+
+@keyframes royal-pop {
+  from { transform: scale(0.7); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.board {
+  position: relative; /* 得点の表示をマスの上に重ねるため */
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  aspect-ratio: 1;
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  /* 盤の幅を列数で割って決めるので、6x6 では自動的に大きくなる */
+  font-size: calc(min(100vw - 32px, 560px) / var(--size, 8) * 0.7);
+  line-height: 1;
+  transition: box-shadow 0.12s ease;
+}
+
+.cell.light { background-color: var(--light-square); }
+.cell.dark { background-color: var(--dark-square); }
+.cell.empty { background-color: #6f5a3e; }
+
+.piece {
+  /* 駒の記号は塗りの ♟ 系だけを使い、色は CSS で塗り分ける（白駒が背景に溶けないように） */
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s ease;
+}
+
+/* 白黒は「塗り」だけでなく「縁取り」でも区別する。
+   ランクのオーラを付けたことで黒駒が明るく見え、白と混同されたため。
+   白 = 白地に黒縁 / 黒 = 黒地に白縁 で、一目で判別できるようにする。
+
+   paint-order で縁を文字の背面に回すのが要点。前面のままだと縁が塗りを
+   食って、白駒の中身が暗くなり「白い縁取りの黒駒」と見分けがつかなくなる。 */
+.piece.white,
+.piece.black {
+  paint-order: stroke fill;
+  -webkit-text-stroke-width: 0.09em;
+}
+
+.piece.white {
+  color: #ffffff;
+  -webkit-text-stroke-color: #14110d;
+}
+
+.piece.black {
+  color: #14110d;
+  -webkit-text-stroke-color: #f4efe4;
+}
+
+/* オーラの色でランクと色（白/黒）の両方を表す。
+   同じオーラ色どうしが3つ並べば消える、と見た目だけで判断できるようにするため。 */
+.piece.white.rank-1 { --aura: var(--rank1-white); }
+.piece.black.rank-1 { --aura: var(--rank1-black); }
+.piece.white.rank-2 { --aura: var(--rank2-white); }
+.piece.black.rank-2 { --aura: var(--rank2-black); }
+.piece.white.rank-3 { --aura: var(--rank3-white); }
+.piece.black.rank-3 { --aura: var(--rank3-black); }
+.piece.white.wild { --aura: var(--wild-white); }
+.piece.black.wild { --aura: var(--wild-black); }
+
+.piece {
+  filter: drop-shadow(0 0 3px rgba(var(--aura), 1))
+          drop-shadow(0 0 7px rgba(var(--aura), 0.55));
+}
+
+/* ワイルド（クイーン・キング）だけ一段強く光らせて別格に見せる */
+.piece.wild {
+  filter: drop-shadow(0 0 4px rgba(var(--aura), 1))
+          drop-shadow(0 0 12px rgba(var(--aura), 0.75));
+}
+
+/* 選択中のマス。マスの地の色そのものを塗り替える（枠だけだと分かりにくい）。
+   移動先ハイライト（金色）と紛れないよう、色も変える。
+   同じ色だと「選んだ駒自身も移動先の一つ」に見えてしまう。 */
+.cell.selected {
+  background-color: var(--selected-bg);
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.55);
+}
+
+/* 移動できるマスもマスの地の色ごと塗り替える。
+   盤の色（くすんだ茶系）とは彩度がはっきり違うので一目で分かる。 */
+.cell.movable {
+  background-color: var(--movable-bg);
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.45);
+}
+
+/* レア役を作れる駒。動かす駒がどれか分かるように脈打たせる */
+.cell.royal {
+  animation: royal-pulse 1.3s ease-in-out infinite;
+}
+
+@keyframes royal-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 2px rgba(120, 220, 255, 0.5); }
+  50% { box-shadow: inset 0 0 0 4px rgba(120, 220, 255, 1); }
+}
+
+/* その駒を選んだときの、レア役が決まる移動先。通常の移動先より強く見せる */
+.cell.royal-target {
+  background-color: var(--royal-bg);
+  animation: royal-target-pulse 0.9s ease-in-out infinite;
+}
+
+@keyframes royal-target-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.7); }
+  50% { box-shadow: inset 0 0 0 6px rgba(255, 255, 255, 1); }
+}
+
+.cell.clearing {
+  animation: flash 0.32s ease;
+}
+
+.cell.clearing .piece {
+  transform: scale(1.25);
+}
+
+@keyframes flash {
+  0% { box-shadow: inset 0 0 0 0 rgba(255, 255, 255, 0.9); }
+  40% { box-shadow: inset 0 0 0 40px rgba(255, 255, 255, 0.75); }
+  100% { box-shadow: inset 0 0 0 40px rgba(255, 255, 255, 0); }
+}
+
+button,
+select {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid #3b382f;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+select { padding: 8px 10px; }
+
+button:hover,
+select:hover { border-color: var(--accent); }
+
+.rules {
+  margin-top: 28px;
+  padding: 16px;
+  background: var(--panel);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #cdc6ba;
+}
+
+.rules h2 {
+  font-size: 14px;
+  margin: 0 0 8px;
+  color: var(--text);
+}
+
+.rules h3 {
+  font-size: 13px;
+  margin: 14px 0 6px;
+  color: var(--accent);
+}
+
+.rules ul {
+  margin: 0 0 12px;
+  padding-left: 20px;
+}
+
+.rank-table {
+  border-collapse: collapse;
+  margin-bottom: 8px;
+}
+
+.rank-table th,
+.rank-table td {
+  text-align: left;
+  padding: 2px 12px 2px 0;
+  font-weight: 400;
+}
+
+.rank-table th { color: var(--muted); white-space: nowrap; }
+
+.swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.swatch.r1w { background: rgb(var(--rank1-white)); box-shadow: 0 0 6px rgba(var(--rank1-white), 0.9); }
+.swatch.r1b { background: rgb(var(--rank1-black)); box-shadow: 0 0 6px rgba(var(--rank1-black), 0.9); }
+.swatch.r2w { background: rgb(var(--rank2-white)); box-shadow: 0 0 6px rgba(var(--rank2-white), 0.9); }
+.swatch.r2b { background: rgb(var(--rank2-black)); box-shadow: 0 0 6px rgba(var(--rank2-black), 0.9); }
+.swatch.r3w { background: rgb(var(--rank3-white)); box-shadow: 0 0 6px rgba(var(--rank3-white), 0.9); }
+.swatch.r3b { background: rgb(var(--rank3-black)); box-shadow: 0 0 6px rgba(var(--rank3-black), 0.9); }
+.swatch.rww { background: rgb(var(--wild-white)); box-shadow: 0 0 6px rgba(var(--wild-white), 0.9); }
+.swatch.rwb { background: rgb(var(--wild-black)); box-shadow: 0 0 6px rgba(var(--wild-black), 0.9); }
+
+.examples code {
+  background: #33302a;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
