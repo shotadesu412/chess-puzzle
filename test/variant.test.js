@@ -42,7 +42,7 @@ test('6×6モードではルークもランク2になる', () => {
 });
 
 test('6×6モードでも1手指せる', () => {
-  const game = createGame(seededRng(4), { variant: VARIANTS.compact });
+  const game = createGame(seededRng(4), { variant: VARIANTS.compact, clearingMovesOnly: false });
   assert.equal(game.board.length, 6);
   assert.ok(hasAnyMove(game.board));
 
@@ -93,8 +93,25 @@ test('モードごとのノルマが適用される', () => {
   const compact = createGame(seededRng(1), { variant: VARIANTS.compact });
 
   assert.equal(standard.target, 300);
-  // 6×6 は揃いやすいのでノルマを上げてある
-  assert.equal(compact.target, 450);
+  assert.equal(compact.target, 350);
+});
+
+test('遊べる2モードは、初期ノルマが同じで上がり方だけが違う', () => {
+  // 盤面もルールも同じで、変わるのは1ゲームの尺だけ。
+  // 初期値を動かすと初見の1ラウンド落ちが増えるので、尺は上がり方で調整する
+  const short = createGame(seededRng(1), { variant: VARIANTS.compact });
+  const long = createGame(seededRng(1), { variant: VARIANTS.compactLong });
+
+  assert.equal(short.target, long.target, '初期ノルマは同じ');
+  assert.ok(short.rules.quotaGrowth > long.rules.quotaGrowth, 'みじかめの方が急に上がる');
+  assert.deepEqual(short.rules.variant.spawn, long.rules.variant.spawn, '出現率は同じ');
+  assert.equal(short.board.length, long.board.length, '盤面サイズも同じ');
+});
+
+test('選べるモードは6×6の2つだけ（8×8はルールとしてだけ残してある）', () => {
+  const selectable = Object.values(VARIANTS).filter((v) => v.selectable);
+  assert.deepEqual(selectable.map((v) => v.id), ['compact', 'compactLong']);
+  assert.equal(VARIANTS.standard.selectable, false);
 });
 
 test('呼び出し側の指定はモードの既定値より優先される', () => {
@@ -129,4 +146,13 @@ test('途中の補充では同ランクの並びを許す（落下で出来る�
   board[0][0] = null;
   applyGravity(board, seededRng(2), variant); // options なし
   assert.equal(board[0][0] !== null, true);
+});
+
+test('遊べるモードは selectable で決まる（8×8はルールとして残すが選べない）', () => {
+  assert.equal(VARIANTS.compact.selectable, true);
+  assert.equal(VARIANTS.standard.selectable, false);
+
+  // 選べなくてもルールとしては動くこと（分析ツールが使うため）
+  const game = createGame(seededRng(1), { variant: VARIANTS.standard });
+  assert.equal(game.board.length, 8);
 });

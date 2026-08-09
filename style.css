@@ -27,6 +27,9 @@
 
 * { box-sizing: border-box; }
 
+/* display を持つ要素にも hidden 属性を効かせる（.stats は display:flex のため） */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   padding: 24px 16px 48px;
@@ -112,21 +115,78 @@ h1 {
   background: #7bc86c;
 }
 
-/* 「あと1手でレア役」の予告 */
-.hint {
-  height: 20px;
-  margin: 10px 0 0;
-  font-size: 13px;
-  font-weight: 600;
-  color: #ffd977;
-  opacity: 0;
-  transform: translateY(-3px);
-  transition: opacity 0.2s ease, transform 0.2s ease;
+/* チュートリアル。文章は出さず、進み具合の点とスキップだけ */
+.tutorial {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
 }
 
-.hint.visible {
-  opacity: 1;
-  transform: none;
+.tutorial-dots {
+  display: flex;
+  gap: 8px;
+}
+
+.tutorial-dots span {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #4a4740;
+}
+
+.tutorial-dots span.done { background: #7bc86c; }
+.tutorial-dots span.current {
+  background: #ffffff;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.9);
+}
+
+.tutorial-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tutorial-skip {
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+/* 1手が終わったら出る。押すと次のステップへ */
+.tutorial-next {
+  padding: 6px 18px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #12212b;
+  background: #7fd8ff;
+  border-color: #7fd8ff;
+  animation: next-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes next-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(127, 216, 255, 0.7); }
+  50% { box-shadow: 0 0 0 7px rgba(127, 216, 255, 0); }
+}
+
+/* そこへ入れば揃う相手（タップするところではない） */
+.cell.partner {
+  animation: partner-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes partner-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 3px rgba(190, 244, 110, 0.55); }
+  50% { box-shadow: inset 0 0 0 6px rgba(190, 244, 110, 1); }
+}
+
+/* 次に押してほしいマス */
+.cell.guide {
+  animation: guide-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes guide-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.65); }
+  50% { box-shadow: inset 0 0 0 6px rgba(255, 255, 255, 1); }
 }
 
 .message {
@@ -220,6 +280,11 @@ h1 {
   gap: 12px;
   margin-top: 16px;
   flex-wrap: wrap;
+}
+
+.mute {
+  padding: 8px 12px;
+  line-height: 1;
 }
 
 .controls-note {
@@ -335,25 +400,29 @@ h1 {
   box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.45);
 }
 
-/* レア役を作れる駒。動かす駒がどれか分かるように脈打たせる */
-.cell.royal {
-  animation: royal-pulse 1.3s ease-in-out infinite;
+/* もうすぐワイルドに昇格するポーン。
+   outline を使うのは、選択中や移動先の box-shadow とぶつからないようにするため */
+.cell.ripening {
+  outline: 3px solid rgba(255, 200, 60, 0.9);
+  outline-offset: -3px;
+  animation: ripen-pulse 0.9s ease-in-out infinite;
 }
 
-@keyframes royal-pulse {
-  0%, 100% { box-shadow: inset 0 0 0 2px rgba(120, 220, 255, 0.5); }
-  50% { box-shadow: inset 0 0 0 4px rgba(120, 220, 255, 1); }
+@keyframes ripen-pulse {
+  0%, 100% { outline-color: rgba(255, 200, 60, 0.3); }
+  50% { outline-color: rgba(255, 214, 100, 1); }
 }
 
-/* その駒を選んだときの、レア役が決まる移動先。通常の移動先より強く見せる */
-.cell.royal-target {
+/* ポーンがワイルドに昇格したマス */
+.cell.promoted {
   background-color: var(--royal-bg);
-  animation: royal-target-pulse 0.9s ease-in-out infinite;
+  animation: promote-flash 0.55s ease-out;
 }
 
-@keyframes royal-target-pulse {
-  0%, 100% { box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.7); }
-  50% { box-shadow: inset 0 0 0 6px rgba(255, 255, 255, 1); }
+@keyframes promote-flash {
+  0% { box-shadow: inset 0 0 0 0 rgba(255, 235, 150, 1); }
+  35% { box-shadow: inset 0 0 0 8px rgba(255, 235, 150, 1); }
+  100% { box-shadow: inset 0 0 0 8px rgba(255, 235, 150, 0); }
 }
 
 .cell.clearing {
@@ -427,6 +496,79 @@ select:hover { border-color: var(--accent); }
 
 .rank-table th { color: var(--muted); white-space: nowrap; }
 
+/* 駒の動き確認表。上のマークで切り替える */
+.move-chart {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin: 10px 0 12px;
+}
+
+.move-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.move-tab {
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  font-size: 22px;
+  line-height: 1;
+  color: #ffffff;
+  background: #33302a;
+  border: 1px solid #4a453c;
+  -webkit-text-stroke: 0.05em #14110d;
+  paint-order: stroke fill;
+}
+
+.move-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #1b1a17;
+  -webkit-text-stroke-color: #1b1a17;
+}
+
+.move-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--n), 1fr);
+  width: calc(var(--n) * 34px);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.move-cell {
+  position: relative;
+  aspect-ratio: 1;
+  background: #3b372f;
+  border: 0.5px solid #2a2721;
+}
+
+/* 動ける先 */
+.move-cell.can::after {
+  content: "";
+  position: absolute;
+  inset: 27%;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* 中央＝動かす駒 */
+.move-cell.self {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #6b5a3e;
+  font-size: 20px;
+  line-height: 1;
+  color: #ffffff;
+  -webkit-text-stroke: 0.05em #14110d;
+  paint-order: stroke fill;
+}
+
 .swatch {
   display: inline-block;
   width: 9px;
@@ -449,4 +591,16 @@ select:hover { border-color: var(--accent); }
   background: #33302a;
   padding: 1px 5px;
   border-radius: 3px;
+}
+
+/* プレイ履歴の書き出し。ルール説明の一番下に置いてある */
+.log-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.log-buttons button {
+  padding: 6px 14px;
+  font-size: 13px;
 }

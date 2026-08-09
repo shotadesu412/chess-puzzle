@@ -13,7 +13,7 @@ import { SIZE, makeBoard, put, seededRng, toKeySet } from './helpers.js';
  *   (4,2) の白クイーン（ワイルド）が縦に飛んで (0,2) の黒ポーンを取ると W1 W1 W3 が並ぶ。
  */
 function gameAboutToMatch() {
-  const game = createGame(seededRng(7));
+  const game = createGame(seededRng(7), { clearingMovesOnly: false });
   const board = makeBoard([]);
   put(board, 0, 1, PieceType.Pawn, Color.White);
   put(board, 0, 2, PieceType.Pawn, Color.Black);
@@ -64,7 +64,7 @@ test('動かせない手は無効（null が返る）', () => {
 });
 
 test('消える組み合わせが出来ない手でも、空きマスは補充される', () => {
-  const game = createGame(seededRng(3));
+  const game = createGame(seededRng(3), { clearingMovesOnly: false });
   const before = game.board.flat().filter(Boolean).length;
 
   // 適当に動かせる手を1つ探して指す

@@ -9,6 +9,15 @@
     "bench": "node tools/bench.mjs",
     "simulate": "node tools/simulate.mjs",
     "tune": "node tools/tune.mjs",
-    "chain-growth": "node tools/chain-growth.mjs"
+    "chain-growth": "node tools/chain-growth.mjs",
+    "analyze": "node tools/analyze.mjs",
+    "rewind-sweep": "node tools/rewind-sweep.mjs",
+    "preview-combo": "node tools/preview-combo.mjs",
+    "promotion-sweep": "node tools/promotion-sweep.mjs",
+    "royal-hunt": "node tools/royal-hunt.mjs",
+    "rank-balance": "node tools/rank-balance.mjs",
+    "quota-tune": "node tools/quota-tune.mjs",
+    "verify-length": "node tools/verify-length.mjs",
+    "analyze-log": "node tools/analyze-log.mjs"
   }
 }

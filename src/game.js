@@ -9,7 +9,8 @@
 
 import { applyGravity, cloneBoard, createInitialBoard } from './board.js';
 import { findMatches, groupMatches } from './match.js';
-import { movableSquares } from './moves.js';
+import { playableSquares } from './moves.js';
+import { Color, PieceType, createPiece } from './pieces.js';
 import { DEFAULT_RULES, targetForRound } from './rules.js';
 import { GROUP_KIND, KIND_MULTIPLIER, classifyGroup, scoreForGroup } from './score.js';
 
@@ -44,7 +45,8 @@ export function createGame(rng = Math.random, options = {}) {
 /** from の駒が to へ動けるか */
 export function canMove(game, from, to) {
   if (game.over) return false;
-  return movableSquares(game.board, from).some((s) => s.r === to.r && s.c === to.c);
+  return playableSquares(game.board, from, game.rules.clearingMovesOnly)
+    .some((s) => s.r === to.r && s.c === to.c);
 }
 
 /**
@@ -65,6 +67,7 @@ export function applyMove(game, from, to) {
   // 2. 消去 → 重力 → 再判定 を繰り返す
   let chain = 0;
   let gained = 0;
+  let aged = false; // 歳を取らせるのは1手につき1回だけ
   let matches = findMatches(board);
 
   for (let guard = 0; guard < MAX_RESOLVE_LOOPS; guard++) {
@@ -104,9 +107,34 @@ export function applyMove(game, from, to) {
         chain,
         points,
         royalKind,
+        // レア役はノルマの難易度そのものを巻き戻す
+        rewind: royalKind ? rewindRound(game, royalKind) : null,
         board: cloneBoard(board),
       });
       for (const { r, c } of matches) board[r][c] = null;
+
+      // レア役が出たら盤面を全部ワイルドに変えて、そのまま一掃する。
+      // 演出であると同時に、盤面のリセットも兼ねている。
+      if (royalKind && game.rules.royalWipe) {
+        const transformed = transformToWild(game, board, royalKind);
+        if (transformed.length > 0) {
+          phases.push({
+            kind: 'transform',
+            royalKind,
+            cells: transformed,
+            board: cloneBoard(board),
+          });
+
+          const wiped = wipeBoard(board);
+          const wipePoints = Math.round(
+            scoreForGroup(wiped.length, chain, GROUP_KIND.Normal, game.rules.chainGrowth)
+            * game.rules.royalWipeMultiplier
+          );
+          gained += wipePoints;
+          game.score += wipePoints;
+          phases.push({ kind: 'wipe', cells: wiped, points: wipePoints, board: cloneBoard(board) });
+        }
+      }
     }
 
     if (applyGravity(board, game.rng, game.rules.variant)) {
@@ -114,6 +142,18 @@ export function applyMove(game, from, to) {
     }
 
     matches = findMatches(board);
+
+    // 盤面が落ち着いたら、1ターン分だけ駒に歳を取らせて昇格を判定する。
+    // 昇格でまた揃うことがあるので、その場合はこのループを続ける。
+    if (matches.length === 0 && !aged) {
+      aged = true;
+      const promoted = agePieces(game, board);
+      if (promoted.length > 0) {
+        phases.push({ kind: 'promote', cells: promoted, board: cloneBoard(board) });
+        matches = findMatches(board);
+      }
+    }
+
     if (matches.length === 0) break;
   }
 
@@ -121,6 +161,93 @@ export function applyMove(game, from, to) {
   game.maxChain = Math.max(game.maxChain, chain);
 
   return { phases, chain, gained, check: advanceRound(game, gained) };
+}
+
+/**
+ * 盤面に残っている駒を全部ワイルドに変える。
+ * 混合ロイヤルならクイーンとキングが混ざり、単一ロイヤルならその駒だけになる。
+ */
+function transformToWild(game, board, royalKind) {
+  const rankTable = game.rules.variant.rankTable;
+  const cells = [];
+
+  for (let r = 0; r < board.length; r++) {
+    for (let c = 0; c < board.length; c++) {
+      const piece = board[r][c];
+      if (!piece) continue;
+
+      let type;
+      if (royalKind === GROUP_KIND.Queens) type = PieceType.Queen;
+      else if (royalKind === GROUP_KIND.Kings) type = PieceType.King;
+      else type = game.rng() < 0.5 ? PieceType.Queen : PieceType.King;
+
+      board[r][c] = createPiece(type, piece.color, rankTable);
+      cells.push({ r, c });
+    }
+  }
+  return cells;
+}
+
+/** 盤面を空にする。消えたマスの一覧を返す */
+function wipeBoard(board) {
+  const cells = [];
+  for (let r = 0; r < board.length; r++) {
+    for (let c = 0; c < board.length; c++) {
+      if (!board[r][c]) continue;
+      board[r][c] = null;
+      cells.push({ r, c });
+    }
+  }
+  return cells;
+}
+
+/**
+ * 盤面の駒を1ターン分歳を取らせ、条件を満たしたポーンをワイルドに昇格させる。
+ * 昇格したマスの一覧を返す。
+ *
+ * チェスのプロモーションに相当する。ワイルドを「降ってくるもの」ではなく
+ * 「消さずに守って作るもの」にするための仕組み。
+ */
+function agePieces(game, board) {
+  const after = game.rules.promoteAfter;
+  const promoted = [];
+
+  for (let r = 0; r < board.length; r++) {
+    for (let c = 0; c < board.length; c++) {
+      const piece = board[r][c];
+      if (!piece) continue;
+      piece.age++;
+
+      if (after > 0 && piece.type === PieceType.Pawn && piece.age >= after) {
+        // クイーンとキングは同じワイルド。どちらになるかは半々
+        const type = game.rng() < 0.5 ? PieceType.Queen : PieceType.King;
+        board[r][c] = createPiece(type, piece.color, game.rules.variant.rankTable);
+        promoted.push({ r, c });
+      }
+    }
+  }
+  return promoted;
+}
+
+/**
+ * レア役の恩恵としてラウンドを巻き戻す。ノルマもその水準に戻る。
+ * 巻き戻らなかったら null を返す。
+ */
+function rewindRound(game, kind) {
+  const ratio = game.rules.royalRewind?.[kind] ?? 0;
+  if (ratio <= 0 || game.round <= 1) return null;
+
+  const from = game.round;
+  // 「戻すラウンド数」から引く。1 - ratio を先に計算すると
+  // 1 - 0.7 = 0.30000000000000004 になり、10ラウンド目が3ではなく4になる。
+  // 掛け算のあとの誤差も切り捨てで消えないよう、わずかに足してから丸める。
+  const back = Math.floor(from * ratio + 1e-9);
+  const to = Math.max(1, from - back);
+  if (to >= from) return null;
+
+  game.round = to;
+  game.target = targetForRound(game.rules, to);
+  return { from, to, kind };
 }
 
 /**

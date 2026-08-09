@@ -10,9 +10,13 @@ import { PieceType, RANK_TABLES } from './pieces.js';
  * そのランクが3つ揃う確率が上がって盤面が消えやすくなりすぎる。
  */
 export const VARIANTS = {
+  // 8×8は遊ぶモードとしては外してある（`selectable: false`）。
+  // 合法手が1手あたり263手あり、認知の負荷が高すぎるため（6×6は87手）。
+  // ルールとしては残してあるので、tools/ の分析や比較には今でも使える。
   standard: {
     id: 'standard',
     name: '8×8 / ランク3段階',
+    selectable: false,
     boardSize: 8,
     rankTable: RANK_TABLES.threeTier,
     // ランク1: 30% / ランク2: 30% / ランク3: 30% / ワイルド: 10%
@@ -28,24 +32,50 @@ export const VARIANTS = {
     rules: { quotaBase: 300 },
   },
 
+  // 遊べるモードは6×6の2つ。**盤面もルールも同じで、ノルマの上がり方だけが違う**。
+  // 1ゲームの長さを尺で選べるようにしてある（`npm run quota-tune` で逆算）。
   compact: {
     id: 'compact',
-    name: '6×6 / ランク2段階',
+    name: 'みじかめ（約3分）',
+    selectable: true,
     boardSize: 6,
     rankTable: RANK_TABLES.twoTier,
-    // ランク1: 45% / ランク2: 45% / ワイルド: 10%
+    // ランク1: 48% / ランク2: 48% / ワイルド: 4%
+    // ワイルドは昇格（下の promoteAfter）で作るものにしたので、
+    // 降ってくる分は「たまのラッキー」程度まで絞ってある。
     spawn: [
-      { type: PieceType.Pawn, weight: 45 },
-      { type: PieceType.Rook, weight: 15 },
-      { type: PieceType.Bishop, weight: 15 },
-      { type: PieceType.Knight, weight: 15 },
-      { type: PieceType.Queen, weight: 5 },
-      { type: PieceType.King, weight: 5 },
+      { type: PieceType.Pawn, weight: 48 },
+      { type: PieceType.Rook, weight: 16 },
+      { type: PieceType.Bishop, weight: 16 },
+      { type: PieceType.Knight, weight: 16 },
+      { type: PieceType.Queen, weight: 2 },
+      { type: PieceType.King, weight: 2 },
     ],
-    // 6×6 はランクが2段階しかなく揃いやすい（ランダム盤面の24%が消える。8×8は16%）。
-    // 8×8 と同じ 300 だと17ラウンド85ターンまで延びるので、ノルマを上げて尺を合わせる。
-    // 450 なら11ラウンド55ターンで、腕の差も1.83倍と8×8（1.38倍）より大きい。
-    rules: { quotaBase: 450 },
+    // 上手いプレイヤーで8ラウンド40ターン（約2.9分）。腕の差2.00倍。
+    // 初期値は2つのモードで共通にしてある。**変えるのは上がり方だけ**。
+    // 初期値を上げると初見の1ラウンド落ちが増える（350で20% / 400で30%）ので、
+    // 尺の調整は上がり方でやる。
+    rules: { quotaBase: 350, quotaGrowth: 1.7 },
+  },
+
+  compactLong: {
+    id: 'compactLong',
+    name: 'じっくり（約5分）',
+    selectable: true,
+    boardSize: 6,
+    rankTable: RANK_TABLES.twoTier,
+    spawn: [
+      { type: PieceType.Pawn, weight: 48 },
+      { type: PieceType.Rook, weight: 16 },
+      { type: PieceType.Bishop, weight: 16 },
+      { type: PieceType.Knight, weight: 16 },
+      { type: PieceType.Queen, weight: 2 },
+      { type: PieceType.King, weight: 2 },
+    ],
+    // 上手いプレイヤーで11ラウンド70ターン（約5.0分）。腕の差2.33倍。
+    // 上がり方をゆるめると、上手いプレイヤーの6%が150ターンでも終わらなくなる。
+    // これは「狙えばいくらでも伸ばせる」の裏返しなので許容している。
+    rules: { quotaBase: 350, quotaGrowth: 1.42 },
   },
 };
 
@@ -73,6 +103,38 @@ export const DEFAULT_RULES = {
   // 5ターン / x1.15 / 繰越あり だと、上手いプレイヤーで11ラウンド55ターン（約4分）、
   // 下手で7ラウンド35ターン。腕の差がラウンド数に1.57倍として出る。
 
+  /**
+   * 「何か消える手」しか指せなくするか。
+   *
+   * 空振りを許すと、ターンを捨ててレア役を仕込むのが最適解になる
+   * （実測で空振り35手を挟むとスコアが2.4倍）。禁止するとその抜け道が消える。
+   * あわせて1手の選択肢が大きく減るので、盤面も読みやすくなる。
+   */
+  clearingMovesOnly: true,
+
+  /**
+   * ポーンが盤面に残り続けたら昇格してワイルドになるまでのターン数。0なら昇格なし。
+   *
+   * チェスのプロモーションに相当する。ワイルドが降ってくるのを待つのではなく
+   * 「消さずに守って作る」ものにするための仕組み。
+   *
+   * ポーンの寿命は中央3手・平均4.6手しかない（実測）ので、
+   * 長く設定するとほぼ誰も昇格できない。
+   *
+   * 空振り禁止（clearingMovesOnly）を入れてからの実測（1ゲームあたり）:
+   *   なし    : ワイルド率1.6% / ロイヤル0.01回
+   *   8ターン : 昇格48回 / ワイルド率8.6% / ロイヤル0.48回
+   *   12ターン: 昇格24回 / ワイルド率5.6% / ロイヤル0.13回  ← 現行
+   *   16ターン: 昇格13回 / ワイルド率3.7% / ロイヤル0.03回
+   * 短くするとワイルドが増えすぎて、かえって消せなくなる（ワイルドは1並びに1個までのため）。
+   *
+   * 注意: 盤面には常時16個ほどポーンがあり、それぞれが同時に歳を取る。
+   * そのため閾値を伸ばしても「1ターンあたりの昇格数」はあまり下がらない
+   * （6ターンで1.3回/ターン、8ターンで0.8回/ターン）。
+   * 「守って作った」感を出すには、昇格が近いポーンを見えるようにする必要がある。
+   */
+  promoteAfter: 10,
+
   /** 何ターンごとにノルマを判定するか */
   quotaInterval: 5,
 
@@ -81,6 +143,56 @@ export const DEFAULT_RULES = {
 
   /** ラウンドごとにノルマが上がる倍率 */
   quotaGrowth: 1.15,
+
+  /**
+   * ノルマの上限。0 なら上限なし。
+   *
+   * プレイヤーの火力は成長しない（実測でどのラウンドも850〜900点で一定）ので、
+   * ノルマだけ上げ続けると必ず頭打ちになり、後半は貯金を削って死ぬのを待つだけになる。
+   * 上限を設けると「ギリギリ突破し続けられるか」の耐久戦になる。
+   */
+  quotaMax: 0,
+
+  /**
+   * レア役が出たら、盤面を全部ワイルドに変えてから一掃するか。
+   *
+   * 目的は2つ。①一面がクイーン／キングになる演出 ②盤面とノルマのリセット。
+   * 混合ロイヤルならクイーンとキングが混ざり、単一ロイヤルならその駒だけになる。
+   */
+  royalWipe: true,
+
+  /**
+   * 一掃したときの点数の倍率。**仮置き**。
+   * 点数はノルマと一緒に最後に調整する（→ CLAUDE.md「ノルマの再調整は最後」）。
+   */
+  royalWipeMultiplier: 1,
+
+  /**
+   * レア役で「ラウンドを巻き戻す」割合。0=なし / 0.5=半分戻る / 1=最初まで戻る。
+   *
+   * ノルマは上がり続けるのにプレイヤーの火力は成長しないので、
+   * レア役に難易度そのものを巻き戻す恩恵を持たせる。
+   * キーは score.js の GROUP_KIND の値（循環インポートを避けて文字列で書く）。
+   */
+  /**
+   * レア役を出したとき、ラウンドをどれだけ巻き戻すか（1 なら最初まで）。
+   *
+   * 順序は倍率と同じく「狙ったときの作りにくさ」。ただし**絶対値は尺で決まる**。
+   * 上手いプレイヤーはロイヤルを1ゲームに何度も出すので、強く巻き戻すと
+   * ラウンドが進まず**ゲームが終わらなくなる**（`npm run quota-tune` の「終わらず」）。
+   *
+   * 実測（初期350・上手いプレイヤー）:
+   *   巻戻の強さ x0.5 → 終わらず 0〜6%
+   *   巻戻の強さ x1.0 → 終わらず 6〜17%
+   *
+   * 到達ラウンドは6〜13なので、この値でも戻る量ははっきり違う
+   * （8ラウンド目なら 混合1 / クイーン2 / キング4 ラウンド戻る）。
+   */
+  royalRewind: {
+    royal: 0.15,  // 混合ロイヤル（1ゲームに2.9回作れる）
+    queens: 0.35, // クイーンロイヤル（1.24回）
+    kings: 0.5,   // キングロイヤル（0.96回・一番難しい）
+  },
 
   /**
    * ノルマを超えた分を次のラウンドに繰り越すか。
@@ -95,5 +207,6 @@ export const DEFAULT_RULES = {
 
 /** そのラウンドのノルマ */
 export function targetForRound(rules, round) {
-  return Math.round(rules.quotaBase * rules.quotaGrowth ** (round - 1));
+  const target = Math.round(rules.quotaBase * rules.quotaGrowth ** (round - 1));
+  return rules.quotaMax > 0 ? Math.min(target, rules.quotaMax) : target;
 }

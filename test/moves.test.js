@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { hasAnyMove, movableSquares } from '../src/moves.js';
+import { hasAnyMove, movableSquares, playableSquares, wouldClear } from '../src/moves.js';
 import { Color, PieceType } from '../src/pieces.js';
 import { makeBoard, put, toKeySet } from './helpers.js';
 
@@ -130,4 +130,34 @@ test('ルークが1個あれば手詰まりにならない', () => {
   const board = checkerBoard();
   put(board, 3, 3, PieceType.Rook, Color.White);
   assert.equal(hasAnyMove(board), true);
+});
+
+test('空振り禁止のときは、消せる手だけが返る', () => {
+  const board = checkerBoard();
+  put(board, 3, 3, PieceType.Rook, Color.White);
+
+  const all = movableSquares(board, { r: 3, c: 3 });
+  const playable = playableSquares(board, { r: 3, c: 3 }, true);
+
+  assert.ok(playable.length <= all.length);
+  for (const to of playable) {
+    assert.ok(wouldClear(board, { r: 3, c: 3 }, to), '返ってくるのは全部「消える手」');
+  }
+  for (const to of all) {
+    if (wouldClear(board, { r: 3, c: 3 }, to)) {
+      assert.ok(
+        playable.some((p) => p.r === to.r && p.c === to.c),
+        '消える手は漏れなく含まれる'
+      );
+    }
+  }
+});
+
+test('空振り禁止を切れば、今までどおり全部の合法手が返る', () => {
+  const board = checkerBoard();
+  put(board, 3, 3, PieceType.Rook, Color.White);
+  assert.deepEqual(
+    toKeySet(playableSquares(board, { r: 3, c: 3 }, false)),
+    toKeySet(movableSquares(board, { r: 3, c: 3 }))
+  );
 });

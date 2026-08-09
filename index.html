@@ -10,14 +10,14 @@
   <main class="app">
     <header class="header">
       <h1>チェスパズル</h1>
-      <div class="stats">
+      <div class="stats" id="stats">
         <div class="stat"><span class="stat-label">スコア</span><span id="score">0</span></div>
         <div class="stat"><span class="stat-label">ラウンド</span><span id="round">1</span></div>
         <div class="stat"><span class="stat-label">残りターン</span><span id="turns-left">5</span></div>
       </div>
     </header>
 
-    <div class="quota">
+    <div class="quota" id="quota">
       <div class="quota-head">
         <span>ノルマ</span>
         <span><strong id="round-score">0</strong> / <span id="target">300</span></span>
@@ -25,7 +25,14 @@
       <div class="quota-bar"><div id="quota-fill" class="quota-fill"></div></div>
     </div>
 
-    <p id="hint" class="hint"></p>
+    <div id="tutorial" class="tutorial" hidden>
+      <div id="tutorial-dots" class="tutorial-dots"></div>
+      <div class="tutorial-buttons">
+        <button id="tutorial-next" type="button" class="tutorial-next" hidden>NEXT</button>
+        <button id="tutorial-skip" type="button" class="tutorial-skip">とばす</button>
+      </div>
+    </div>
+
     <p id="message" class="message"></p>
 
     <div id="board" class="board"></div>
@@ -35,54 +42,59 @@
     <div class="controls">
       <button id="reset" type="button">はじめから</button>
       <select id="variant" aria-label="モード"></select>
+      <button id="tutorial-start" type="button">あそび方</button>
+      <button id="mute" type="button" class="mute" aria-label="音を消す">🔊</button>
       <span class="controls-note">最大連鎖 <span id="max-chain">0</span> / 手数 <span id="moves">0</span></span>
     </div>
 
     <section class="rules">
+      <h2>駒の動き</h2>
+      <div id="move-chart" class="move-chart"></div>
+      <p class="examples">マークを押すと切り替わります。中央が動かす駒、印のマスへ動けます。<strong>間に駒があっても飛び越えられます。</strong></p>
+
       <h2>ルール</h2>
       <ul>
         <li>駒をタップすると、<strong>移動できるマスが光ります</strong>。白も黒も動かせます。</li>
-        <li>移動できるのは<strong>チェス本来の移動範囲にある「違う色の駒」のマス</strong>だけ。間に駒があっても飛び越えられます。</li>
-        <li>ポーンだけは例外で、<strong>斜め4方向</strong>（前後どちらも）に取れます。</li>
+        <li>移動できるのは<strong>「違う色の駒」がいるマス</strong>だけ（動き方は上の表）。空いているマスには動けません。</li>
+        <li><strong>何も消えない手は指せません。</strong>光るのは消える手だけです。</li>
         <li>取った駒は消え、動かした駒がいたマスは空きます。空きマスは上から落ちてきて補充されます。</li>
         <li><strong>同じ色</strong>の駒が縦か横に<strong>3マス以上</strong>連続し、<strong>ランクが揃っていれば</strong>消えます。3マス以上そろえば、4マスでも5マスでもまとめて消えます。</li>
         <li><strong>クイーンとキングはワイルド</strong>で、どのランクの代わりにもなります。ただし1つの並びに<strong>1個まで</strong>。</li>
+        <li><strong>ポーンは<span id="rule-promote">?</span>ターン生き残るとワイルドに昇格します。</strong>消さずに守れば自分でワイルドを作れます。あと少しのポーンは金枠で光ります。</li>
+        <li>しばらく手が止まると、<strong>消せる手のうち1つの駒を光らせます</strong>。</li>
       </ul>
       <p><strong>オーラの色が同じ駒どうしが3つ以上並ぶと消えます。</strong>
       ランクは色味で、白黒は明るさで分かれています（明るい＝白 / 濃い＝黒）。</p>
-      <h3>8×8 / ランク3段階</h3>
-      <table class="rank-table">
-        <tr><th>ランク1</th><td><span class="swatch r1w"></span>白 <span class="swatch r1b"></span>黒　♟ ポーン</td></tr>
-        <tr><th>ランク2</th><td><span class="swatch r2w"></span>白 <span class="swatch r2b"></span>黒　♞ ナイト　♝ ビショップ</td></tr>
-        <tr><th>ランク3</th><td><span class="swatch r3w"></span>白 <span class="swatch r3b"></span>黒　♜ ルーク</td></tr>
-        <tr><th>ワイルド</th><td><span class="swatch rww"></span>白 <span class="swatch rwb"></span>黒　♛ クイーン　♚ キング</td></tr>
-      </table>
-
-      <h3>6×6 / ランク2段階</h3>
       <table class="rank-table">
         <tr><th>ランク1</th><td><span class="swatch r1w"></span>白 <span class="swatch r1b"></span>黒　♟ ポーン</td></tr>
         <tr><th>ランク2</th><td><span class="swatch r2w"></span>白 <span class="swatch r2b"></span>黒　♜ ルーク　♝ ビショップ　♞ ナイト</td></tr>
         <tr><th>ワイルド</th><td><span class="swatch rww"></span>白 <span class="swatch rwb"></span>黒　♛ クイーン　♚ キング</td></tr>
       </table>
-      <p class="examples">マスが大きく、動かせる手も8×8の1/3なので盤面を読みやすくなります。</p>
       <p class="examples">
         消える例: 同じオーラ色が3つ以上 / そこにワイルド1個混ざってもOK<br>
         消えない例: オーラ色が違うものが混ざっている / ワイルドが2個以上
       </p>
       <h2>ノルマ</h2>
       <ul>
-        <li><strong>5ターンごとにノルマ判定</strong>があります。届かなければそこで終了です。</li>
-        <li>ノルマはラウンドごとに15%ずつ上がります。</li>
+        <li><strong><span id="rule-interval">?</span>ターンごとにノルマ判定</strong>があります。届かなければそこで終了です。</li>
+        <li>ノルマは<span id="rule-quota-base">?</span>から始まり、ラウンドごとに<span id="rule-quota-growth">?</span>%ずつ上がります。</li>
         <li><strong>超過分は次のラウンドに繰り越されます。</strong>大きく稼いだ分は貯金になるので、たまたま出た大連鎖が後で効いてきます。</li>
       </ul>
       <h2>スコア</h2>
       <ul>
-        <li><strong>一度に多く消すほど得</strong>です。3マス45点、4マス80点、5マス125点。縦と横を同時に消せば1つの大きなカタマリとして数えます。</li>
-        <li>連鎖するたびに倍率が1.5倍ずつ増えます（2連鎖1.5倍、5連鎖5.1倍、8連鎖17倍）。</li>
-        <li><strong>♛♚ ロイヤル</strong>: クイーンとキングだけで3つ揃えると <strong>50倍</strong>。滅多に出ませんが、出れば1ゲーム分がひっくり返ります。</li>
-        <li><strong>♛ クイーンロイヤル</strong> / <strong>♚ キングロイヤル</strong>: さらにクイーンだけ・キングだけで揃うと <strong>400倍</strong>。100ゲームに1回。</li>
-        <li>ロイヤルが決まる手があるときは<strong>その駒が水色の枠で脈打ちます</strong>。20ターンに1回くらい来るので見逃さないように。</li>
+        <li><strong>一度に多く消すほど得</strong>です（<span id="rule-sizes">?</span>）。縦と横を同時に消せば1つの大きなカタマリとして数えます。</li>
+        <li>連鎖するたびに倍率が<span id="rule-chain">?</span>倍ずつ増えます（<span id="rule-chain-examples">?</span>）。</li>
+        <li><strong>♛♚ ロイヤル</strong>: クイーンとキングだけで3つ揃えると <strong><span id="rule-royal">?</span>倍</strong>。さらに<strong>盤面が一面ワイルドに変わって一掃され、ノルマも戻ります</strong>。</li>
+        <li><strong>♛ クイーンロイヤル</strong> <strong><span id="rule-queens">?</span>倍</strong> / <strong>♚ キングロイヤル</strong> <strong><span id="rule-kings">?</span>倍</strong>: クイーンだけ・キングだけで揃うとさらに大きい。キングの方が作りにくいぶん高くしてあります。</li>
       </ul>
+
+      <h2>プレイ履歴</h2>
+      <p class="examples">遊んだ記録を<strong>この端末の中だけ</strong>に残しています。あとから傾向を分析するためのもので、どこにも送っていません。</p>
+      <p id="log-summary" class="examples">—</p>
+      <div class="log-buttons">
+        <button id="log-export" type="button">書き出す</button>
+        <button id="log-clear" type="button">消す</button>
+      </div>
     </section>
   </main>
 

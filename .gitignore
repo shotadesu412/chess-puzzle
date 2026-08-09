@@ -9,3 +9,4 @@ ios/build/
 ios/ChessPuzzle.xcodeproj/
 ios/*.xcworkspace/
 xcuserdata/
+.cache/

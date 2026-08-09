@@ -47,11 +47,16 @@ test('クイーン・キングだけの並びは特大ボーナス', () => {
   assert.ok(scoreForGroup(3, 1, GROUP_KIND.Royal) > scoreForGroup(7, 1) * 5);
 });
 
-test('クイーンだけ・キングだけはさらに8倍（隠し要素）', () => {
-  // ワイルドが3つ揃った時点で希少。そのうえ8回に1回しか単一種にならないので倍率も8倍
-  assert.equal(KIND_MULTIPLIER[GROUP_KIND.Queens], KIND_MULTIPLIER[GROUP_KIND.Royal] * 8);
-  assert.equal(KIND_MULTIPLIER[GROUP_KIND.Kings], KIND_MULTIPLIER[GROUP_KIND.Queens]);
-  assert.equal(scoreForGroup(3, 1, GROUP_KIND.Queens), 45 * 400);
+test('単一ロイヤルは、狙ったときの作りにくさに応じた倍率になっている', () => {
+  // 実測（狙った立ち回り・1ゲームあたり）: 混合2.93回 / クイーン1.24回 / キング0.96回
+  const royal = KIND_MULTIPLIER[GROUP_KIND.Royal];
+  const queens = KIND_MULTIPLIER[GROUP_KIND.Queens];
+  const kings = KIND_MULTIPLIER[GROUP_KIND.Kings];
+
+  assert.ok(queens > royal, 'クイーンは混合より高い');
+  assert.ok(kings > queens, 'キングは一番作りにくいので一番高い');
+  assert.equal(scoreForGroup(3, 1, GROUP_KIND.Queens), 45 * 110);
+  assert.equal(scoreForGroup(3, 1, GROUP_KIND.Kings), 45 * 150);
 });
 
 test('カタマリの種類を判定できる', () => {

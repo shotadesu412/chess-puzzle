@@ -51,9 +51,12 @@ export const RANK_TABLES = {
 
 let nextId = 1;
 
-/** 駒を1個作る。rank は区分表から引いて埋め込む */
+/**
+ * 駒を1個作る。rank は区分表から引いて埋め込む。
+ * age は盤面に居続けたターン数。ポーンの昇格（プロモーション）に使う。
+ */
 export function createPiece(type, color, rankTable = RANK_TABLES.threeTier) {
-  return { id: nextId++, type, color, rank: rankTable[type] };
+  return { id: nextId++, type, color, rank: rankTable[type], age: 0 };
 }
 
 /** 駒のランク（ワイルドなら WILD） */

@@ -11,7 +11,8 @@
 // 白ポーンは最上段で同じことが起きる。盤面の3〜4割がポーンなので影響が大きい。
 
 import { PieceType } from './pieces.js';
-import { inside } from './board.js';
+import { cloneBoard, inside } from './board.js';
+import { findMatches, isPartOfMatch } from './match.js';
 
 const ROOK_DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]];
 const BISHOP_DIRS = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
@@ -78,12 +79,62 @@ function rays(from, dirs, size) {
   return result;
 }
 
+/** その手を指したら何か消えるか。移動先の行と列だけ見れば分かる */
+export function wouldClear(board, from, to) {
+  const next = cloneBoard(board);
+  next[to.r][to.c] = next[from.r][from.c];
+  next[from.r][from.c] = null;
+  return isPartOfMatch(next, to.r, to.c);
+}
+
+/**
+ * 実際に指せる手。
+ *
+ * `clearingOnly` を立てると「何か消える手」しか指せなくなる。
+ * 空振りを許すと、ターンを捨ててレア役を仕込むのが最適解になってしまうため
+ * （実測で空振り35手を挟むとスコアが2.4倍になった）。
+ * 副作用として選択肢が大きく減り、盤面が読みやすくなる。
+ */
+export function playableSquares(board, from, clearingOnly = false) {
+  const squares = movableSquares(board, from);
+  if (!clearingOnly) return squares;
+  return squares.filter((to) => wouldClear(board, from, to));
+}
+
+/**
+ * その手を指したときに消えるマス数（0なら空振り）。
+ *
+ * 「一番多く消せる手はどれか」を測るのに使う。
+ * 消えるかどうかだけでよいなら `wouldClear` の方が速い。
+ */
+export function clearedBy(board, from, to) {
+  const next = cloneBoard(board);
+  next[to.r][to.c] = next[from.r][from.c];
+  next[from.r][from.c] = null;
+  if (!isPartOfMatch(next, to.r, to.c)) return 0;
+  return findMatches(next).length;
+}
+
+/** 盤上で指せる手を全部返す。`{ from, to }` の配列 */
+export function allPlayableMoves(board, clearingOnly = false) {
+  const moves = [];
+  for (let r = 0; r < board.length; r++) {
+    for (let c = 0; c < board.length; c++) {
+      if (!board[r][c]) continue;
+      for (const to of playableSquares(board, { r, c }, clearingOnly)) {
+        moves.push({ from: { r, c }, to });
+      }
+    }
+  }
+  return moves;
+}
+
 /** 盤上に1手でも指せる手があるか（手詰まり判定用） */
-export function hasAnyMove(board) {
+export function hasAnyMove(board, clearingOnly = false) {
   const size = board.length;
   for (let r = 0; r < size; r++) {
     for (let c = 0; c < size; c++) {
-      if (board[r][c] && movableSquares(board, { r, c }).length > 0) return true;
+      if (board[r][c] && playableSquares(board, { r, c }, clearingOnly).length > 0) return true;
     }
   }
   return false;

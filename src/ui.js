@@ -33,14 +33,16 @@ export function createBoardView(container, variant, onCellClick) {
 
   /**
    * 盤面を描き直す。
-   * highlight: { selected, movable, clearing, royal, royalTarget }
+   * highlight: { selected, movable, clearing, clearing, promoted, ripening, guide, partner }
    * いずれも {r,c} または その配列
    */
   function render(board, highlight = {}) {
     const movable = keySet(highlight.movable);
     const clearing = keySet(highlight.clearing);
-    const royal = keySet(highlight.royal);
-    const royalTarget = keySet(highlight.royalTarget);
+    const promoted = keySet(highlight.promoted); // 昇格したマス
+    const ripening = keySet(highlight.ripening); // もうすぐ昇格するポーン
+    const guide = keySet(highlight.guide);     // チュートリアルで次に押すマス
+    const partner = keySet(highlight.partner); // チュートリアルで「揃う相手」
     const selected = highlight.selected ? key(highlight.selected) : null;
 
     for (let r = 0; r < size; r++) {
@@ -52,8 +54,10 @@ export function createBoardView(container, variant, onCellClick) {
         cell.classList.toggle('selected', selected === k);
         cell.classList.toggle('movable', movable.has(k));
         cell.classList.toggle('clearing', clearing.has(k));
-        cell.classList.toggle('royal', royal.has(k));
-        cell.classList.toggle('royal-target', royalTarget.has(k));
+        cell.classList.toggle('promoted', promoted.has(k));
+        cell.classList.toggle('ripening', ripening.has(k));
+        cell.classList.toggle('guide', guide.has(k));
+        cell.classList.toggle('partner', partner.has(k));
         cell.classList.toggle('empty', piece === null);
 
         if (!piece) {
