@@ -18,6 +18,7 @@
     "rank-balance": "node tools/rank-balance.mjs",
     "quota-tune": "node tools/quota-tune.mjs",
     "verify-length": "node tools/verify-length.mjs",
-    "analyze-log": "node tools/analyze-log.mjs"
+    "analyze-log": "node tools/analyze-log.mjs",
+    "preview-bgm": "node tools/preview-bgm.mjs"
   }
 }

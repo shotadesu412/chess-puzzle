@@ -1,6 +1,6 @@
 // エントリーポイント。入力 → ゲームロジック → 描画 をつなぐ。
 
-import { isMuted, playCombo, setMuted, unlockAudio } from './audio.js';
+import { isBgmEnabled, isMuted, playCombo, setBgmEnabled, setMuted, unlockAudio } from './audio.js';
 import { PieceType } from './pieces.js';
 import { applyMove, canMove, createGame } from './game.js';
 import { allPlayableMoves, clearedBy, hasAnyMove, playableSquares } from './moves.js';
@@ -614,3 +614,37 @@ document.getElementById('menu-backdrop')?.addEventListener('click', closeMenu);
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeMenu();
 });
+
+// --- BGM ----------------------------------------------------------------
+//
+// 既定では鳴らさない。音が出ると困る場面（電車など）で開いてすぐ鳴るのは避けたい。
+// 一度選んだら覚えておく。
+
+const BGM_KEY = 'chess-puzzle.bgm';
+const bgmButton = document.getElementById('bgm');
+
+function updateBgmButton() {
+  if (!bgmButton) return;
+  const on = isBgmEnabled();
+  bgmButton.textContent = on ? '🎵 BGM' : '🎵 BGM オフ';
+  bgmButton.setAttribute('aria-pressed', String(on));
+  bgmButton.setAttribute('aria-label', on ? 'BGMを止める' : 'BGMを鳴らす');
+}
+
+bgmButton?.addEventListener('click', () => {
+  const next = !isBgmEnabled();
+  setBgmEnabled(next);
+  try {
+    localStorage.setItem(BGM_KEY, next ? '1' : '0');
+  } catch {
+    // 覚えられなくても鳴らせる
+  }
+  updateBgmButton();
+});
+
+try {
+  if (localStorage.getItem(BGM_KEY) === '1') setBgmEnabled(true);
+} catch {
+  // 読めなくても既定（オフ）で動く
+}
+updateBgmButton();
