@@ -9,7 +9,10 @@
 <body>
   <main class="app">
     <header class="header">
-      <h1>チェスパズル</h1>
+      <div class="header-top">
+        <h1>チェスパズル</h1>
+        <button id="menu-open" type="button" class="menu-open" aria-label="メニューを開く" aria-haspopup="dialog">☰</button>
+      </div>
       <div class="stats" id="stats">
         <div class="stat"><span class="stat-label">スコア</span><span id="score">0</span></div>
         <div class="stat"><span class="stat-label">ラウンド</span><span id="round">1</span></div>
@@ -39,15 +42,32 @@
 
     <div id="royal-banner" class="royal-banner" aria-live="polite"><span></span></div>
 
-    <div class="controls">
-      <button id="reset" type="button">はじめから</button>
-      <select id="variant" aria-label="モード"></select>
-      <button id="tutorial-start" type="button">あそび方</button>
-      <button id="mute" type="button" class="mute" aria-label="音を消す">🔊</button>
-      <span class="controls-note">最大連鎖 <span id="max-chain">0</span> / 手数 <span id="moves">0</span></span>
-    </div>
+  </main>
 
-    <section class="rules">
+  <!-- 設定と説明はここにまとめる。ゲーム画面には盤面と状況だけを残す -->
+  <div id="menu" class="menu" hidden>
+    <div id="menu-backdrop" class="menu-backdrop"></div>
+    <div class="menu-sheet" role="dialog" aria-modal="true" aria-label="メニュー">
+      <div class="menu-head">
+        <h2>メニュー</h2>
+        <button id="menu-close" type="button" class="menu-close" aria-label="閉じる">✕</button>
+      </div>
+
+      <div class="menu-body">
+        <div class="menu-actions">
+          <button id="reset" type="button">はじめから</button>
+          <button id="tutorial-start" type="button">あそび方</button>
+          <button id="mute" type="button" class="mute" aria-label="音を消す">🔊</button>
+        </div>
+
+        <label class="menu-row" for="variant">
+          <span>モード</span>
+          <select id="variant" aria-label="モード"></select>
+        </label>
+
+        <p class="menu-note">この回　最大連鎖 <span id="max-chain">0</span> / 手数 <span id="moves">0</span></p>
+
+        <div class="rules">
       <h2>駒の動き</h2>
       <div id="move-chart" class="move-chart"></div>
       <p class="examples">マークを押すと切り替わります。中央が動かす駒、印のマスへ動けます。<strong>間に駒があっても飛び越えられます。</strong></p>
@@ -95,8 +115,10 @@
         <button id="log-export" type="button">書き出す</button>
         <button id="log-clear" type="button">消す</button>
       </div>
-    </section>
-  </main>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script type="module" src="src/main.js"></script>
 </body>

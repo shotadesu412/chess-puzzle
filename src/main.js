@@ -47,6 +47,8 @@ const tutorialStartButton = document.getElementById('tutorial-start');
 const TUTORIAL_SEEN_KEY = 'chess-puzzle.tutorial-seen';
 const variantSelect = document.getElementById('variant');
 const logSummaryEl = document.getElementById('log-summary');
+const menuEl = document.getElementById('menu');
+const menuOpenButton = document.getElementById('menu-open');
 
 let variant = VARIANTS.compact;
 let game = createGame(Math.random, { variant });
@@ -137,6 +139,9 @@ function setTutorialUI(active) {
   resetButton.hidden = active;
   tutorialStartButton.hidden = active;
   variantSelect.hidden = active || selectableVariants.length < 2;
+  // チュートリアル中はメニューを開かせない（とばす／NEXT だけに集中させる）
+  if (menuOpenButton) menuOpenButton.hidden = active;
+  if (active) closeMenu();
   if (!active) tutorialNextButton.hidden = true;
 }
 
@@ -421,6 +426,7 @@ function startNewGame() {
 resetButton.addEventListener('click', () => {
   if (busy) return;
   startNewGame();
+  closeMenu(); // 押したら盤面に戻す
 });
 
 // 駒の動き確認表。実際の移動判定から作るので、ルールを変えても古くならない
@@ -446,6 +452,7 @@ variantSelect.addEventListener('change', () => {
   view = createBoardView(boardEl, variant, onCellClick); // 盤面サイズが変わるので作り直す
   startNewGame();
   fillRuleNumbers(); // モードごとにノルマが違う
+  closeMenu();
 });
 
 tutorialStartButton.addEventListener('click', () => {
@@ -580,3 +587,30 @@ document.getElementById('log-clear')?.addEventListener('click', () => {
 
 fillRuleNumbers();
 updateLogSummary();
+
+// --- メニューの開け閉め ---------------------------------------------------
+//
+// 設定・説明・履歴はメニューの中だけに置く。
+// 遊んでいる最中に目に入る情報が多いほど、盤面を読む邪魔になる。
+
+function openMenu() {
+  if (!menuEl) return;
+  menuEl.hidden = false;
+  document.body.classList.add('menu-open');
+  updateLogSummary(); // 開いたときの数字にする
+  document.getElementById('menu-close')?.focus();
+}
+
+function closeMenu() {
+  if (!menuEl || menuEl.hidden) return;
+  menuEl.hidden = true;
+  document.body.classList.remove('menu-open');
+  menuOpenButton?.focus();
+}
+
+menuOpenButton?.addEventListener('click', openMenu);
+document.getElementById('menu-close')?.addEventListener('click', closeMenu);
+document.getElementById('menu-backdrop')?.addEventListener('click', closeMenu);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeMenu();
+});

@@ -42,7 +42,16 @@ function installDom() {
       getBoundingClientRect() { return { top: 0, left: 0, width: 40, height: 40 }; },
       animate() { return { finished: Promise.resolve(), cancel() {} }; },
       focus() {},
-      click() {},
+      click() { el.fire('click'); },
+      // 押した結果まで確かめたいので、登録されたものを覚えておく
+      listeners: new Map(),
+      fire(type, event = {}) {
+        for (const fn of el.listeners.get(type) ?? []) fn({ type, ...event });
+      },
+    };
+    el.addEventListener = (type, fn) => {
+      if (!el.listeners.has(type)) el.listeners.set(type, []);
+      el.listeners.get(type).push(fn);
     };
     return el;
   };
@@ -102,4 +111,37 @@ test('main.js が例外を出さずに起動し、画面の中身が埋まる', 
   assert.equal(store.get('rule-queens').textContent, '110', 'クイーンロイヤルの倍率');
   assert.equal(store.get('rule-kings').textContent, '150', 'キングロイヤルの倍率');
   assert.match(store.get('log-summary').textContent, /記録はありません/, 'ログの要約が出ること');
+});
+
+test('メニューは押すと開き、閉じるボタンと背景で閉じる', async () => {
+  // 上の test で読み込み済み。同じ store を見る
+  const { document } = globalThis;
+  const menu = document.getElementById('menu');
+
+  // 起動直後は閉じている（HTML 側の hidden はスタブに無いので、ここでは閉じてから始める）
+  document.getElementById('menu-close').fire('click');
+  assert.equal(menu.hidden, true, '最初は閉じていること');
+
+  document.getElementById('menu-open').fire('click');
+  assert.equal(menu.hidden, false, '押すと開くこと');
+  assert.ok(document.body.classList.contains('menu-open'), '後ろのスクロールを止めること');
+
+  document.getElementById('menu-close').fire('click');
+  assert.equal(menu.hidden, true, '閉じるボタンで閉じること');
+  assert.ok(!document.body.classList.contains('menu-open'), 'スクロールを戻すこと');
+
+  document.getElementById('menu-open').fire('click');
+  document.getElementById('menu-backdrop').fire('click');
+  assert.equal(menu.hidden, true, '背景を押しても閉じること');
+});
+
+test('メニューから「はじめから」を押すと盤面に戻る', () => {
+  const { document } = globalThis;
+  const menu = document.getElementById('menu');
+
+  document.getElementById('menu-open').fire('click');
+  assert.equal(menu.hidden, false);
+
+  document.getElementById('reset').fire('click');
+  assert.equal(menu.hidden, true, '押したらメニューは閉じること');
 });

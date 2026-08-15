@@ -51,6 +51,22 @@ body {
   flex-wrap: wrap;
 }
 
+/* タイトルとメニューボタン。幅が狭いときは1行を占有して、
+   スコアが下に回るようにする（縦に積んだ方が読みやすい） */
+.header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex: 1 1 100%;
+}
+
+.menu-open {
+  padding: 6px 12px;
+  font-size: 18px;
+  line-height: 1;
+}
+
 h1 {
   font-size: 20px;
   margin: 0;
@@ -274,23 +290,9 @@ h1 {
   cursor: default;
 }
 
-.controls {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 16px;
-  flex-wrap: wrap;
-}
-
 .mute {
   padding: 8px 12px;
   line-height: 1;
-}
-
-.controls-note {
-  font-size: 12px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
 }
 
 /* クイーン・キング揃い（激レア）だけ派手に見せる */
@@ -455,11 +457,9 @@ select { padding: 8px 10px; }
 button:hover,
 select:hover { border-color: var(--accent); }
 
+/* ルール説明はメニューの中に入っているので、外枠は付けない */
 .rules {
-  margin-top: 28px;
-  padding: 16px;
-  background: var(--panel);
-  border-radius: 8px;
+  margin-top: 20px;
   font-size: 13px;
   line-height: 1.7;
   color: #cdc6ba;
@@ -604,3 +604,92 @@ select:hover { border-color: var(--accent); }
   padding: 6px 14px;
   font-size: 13px;
 }
+
+/* --- メニュー -----------------------------------------------------------
+   設定・説明・履歴をここにまとめ、ゲーム画面には盤面と状況だけを残す。
+   遊んでいる最中に目に入る情報が多いほど、盤面を読む邪魔になる。 */
+
+.menu[hidden] { display: none; }
+
+.menu {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.menu-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 9, 7, 0.72);
+}
+
+.menu-sheet {
+  position: relative;
+  width: min(560px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid #3b382f;
+  border-radius: 12px;
+  margin: 16px;
+  overflow: hidden;
+}
+
+.menu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #3b382f;
+  /* 説明が長いので、閉じるボタンは常に見えるようにしておく */
+  flex: 0 0 auto;
+}
+
+.menu-head h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.menu-close {
+  padding: 6px 12px;
+  line-height: 1;
+}
+
+.menu-body {
+  padding: 16px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.menu-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.menu-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  font-size: 14px;
+}
+
+.menu-row select { flex: 0 1 220px; }
+
+.menu-note {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* メニューを開いている間は後ろがスクロールしないようにする */
+body.menu-open { overflow: hidden; }
