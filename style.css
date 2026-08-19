@@ -693,3 +693,83 @@ select:hover { border-color: var(--accent); }
 
 /* メニューを開いている間は後ろがスクロールしないようにする */
 body.menu-open { overflow: hidden; }
+
+/* --- ホーム画面 ---------------------------------------------------------
+   開いたら最初にここ。曲もここだけ別（ゲーム中とは違う一曲）。
+   「はじめる」を押させることで、iOS の音の解禁もここで済ませている。 */
+
+.home[hidden] { display: none; }
+
+.home {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  box-sizing: border-box;
+}
+
+.home-inner {
+  width: min(420px, 100%);
+  text-align: center;
+}
+
+.home-title {
+  margin: 0;
+  font-size: clamp(30px, 9vw, 44px);
+  letter-spacing: 0.06em;
+}
+
+.home-sub {
+  margin: 8px 0 32px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.home-start {
+  width: 100%;
+  padding: 16px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1b1a17;
+  background: var(--accent);
+  border: none;
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(240, 180, 41, 0.25);
+}
+
+.home-start:hover {
+  background: #ffc74a;
+  border-color: transparent;
+}
+
+.home-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
+  font-size: 14px;
+}
+
+.home-row select { flex: 0 1 240px; }
+
+.home-best {
+  margin: 20px 0 0;
+  min-height: 1.2em;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.home-links {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 24px;
+}
+
+.home-links button {
+  flex: 1 1 0;
+  font-size: 13px;
+}

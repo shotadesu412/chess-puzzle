@@ -1,176 +1,180 @@
-// BGM（控えめな夜ジャズ）。
+// BGM。ホーム画面とゲーム中で曲を切り替える。
 //
-// **音源ファイルを持たず、その場で組み立てている。** 理由:
-//   - 1ゲームが3〜5分なので、既成のループ曲だと必ず継ぎ目が耳につく。
-//     組み立てなら終わりが無く、同じ小節も毎回すこし違う
-//   - 権利がまったく絡まない（自分たちで書いた音）
-//   - アプリが重くならない（MP3なら数MB、これは0バイト）
-//   - コンボ音（audio.js）と同じ調で鳴らせる
+// **Web Audio ではなく `<audio>` で鳴らしている。** 1曲11〜13分あるので、
+// Web Audio で読むと全部デコードしてメモリに載せることになる（1曲で100MB超）。
+// `<audio>` なら流しながら再生できる。
 //
-// **調はDマイナー。コンボ音の基準（COMBO_ROOT_HZ = D2）と同じにしてある。**
-// 別々の調にすると、消したときのベース音がBGMとぶつかって濁る。
+// 効果音（audio.js）とは別系統。あちらは合成なので待ち時間ゼロが要る。
+// BGMは数秒遅れて始まっても困らない。
 //
-// 音の中身（どの拍に何の音を置くか）は `planBar` に純粋関数として出してある。
-// ブラウザの再生と、耳で確かめる用のWAV書き出し（tools/preview-bgm.mjs）で
-// 同じものを使うため。片方だけ直して食い違うのを防ぐ。
+// 音量の上げ下げだけで場面を切り替える（クロスフェード）。曲が切り替わる瞬間に
+// 無音があると「止まった」ように聞こえるため。
 
-/** 基準の音。D2。コンボ音と同じ */
-export const BGM_ROOT_HZ = 73.42;
-
-/** テンポ。夜のジャズくらいのゆっくりさ */
-export const BGM_TEMPO = 70;
-
-/**
- * 8分音符の跳ね（スウィング）。
- * 0.5 なら均等、0.62 くらいで「タータ、タータ」になる。
- */
-export const BGM_SWING = 0.62;
-
-/** 和音の形。コードのルートから何半音上を重ねるか */
-export const CHORD_SHAPES = {
-  m9: [0, 3, 7, 10, 14],       // マイナー9th。しっとりした響き
-  m7b5: [0, 3, 6, 10],         // ハーフディミニッシュ。次へ進みたくなる
-  dom7b9: [0, 4, 7, 10, 13],   // 7th♭9。マイナーへ帰る前の緊張
+/** 場面ごとの曲。ゲーム中は複数あって、始めるたびに選び直す */
+export const BGM_TRACKS = {
+  home: ['assets/bgm/midnight-in-blue.mp3'],
+  game: [
+    'assets/bgm/midnight-in-the-quiet-room.mp3',
+    'assets/bgm/midnight-in-the-quiet-room-2.mp3',
+  ],
 };
 
+/** 場面を切り替えるときにかける時間(秒) */
+export const CROSSFADE_SECONDS = 1.2;
+
+/** ふだんの音量。効果音より控えめにする */
+export const BGM_VOLUME = 0.45;
+
+/** 効果音が鳴っている間に下げる割合 */
+export const DUCK_RATIO = 0.4;
+
+/** フェードの刻み(ms) */
+const FADE_TICK = 50;
+
 /**
- * 8小節の回り方（Dマイナー）。
- * ジャズの定番の進み方で、8小節でひと回りして頭に戻る。
- * root はDから何半音上か。
+ * その場面で次にかける曲を選ぶ。
+ *
+ * 候補が複数あるときは、**直前と同じ曲は選ばない**。
+ * 続けて同じ曲だと「1曲しか無い」ように聞こえるため。
  */
-export const PROGRESSION = [
-  { root: 0, shape: 'm9' },      // Dm9
-  { root: 0, shape: 'm9' },      // Dm9
-  { root: 5, shape: 'm9' },      // Gm9
-  { root: 5, shape: 'm9' },      // Gm9
-  { root: 2, shape: 'm7b5' },    // Em7♭5
-  { root: 7, shape: 'dom7b9' },  // A7♭9
-  { root: 0, shape: 'm9' },      // Dm9
-  { root: 7, shape: 'dom7b9' },  // A7♭9（頭に戻る）
-];
+export function pickTrack(scene, rng = Math.random, previous = null) {
+  const tracks = BGM_TRACKS[scene];
+  if (!tracks || tracks.length === 0) return null;
+  if (tracks.length === 1) return tracks[0];
 
-/** 音色の設定。プレビュー（tools/preview-bgm.mjs）と共有する */
-export const BGM_VOICE = {
-  bass: {
-    gain: 0.20,
-    attack: 0.012,
-    release: 0.55,
-    filterFrom: 1800,
-    filterTo: 260,
-    filterSweep: 0.3,
-    q: 5,
-    detune: 6,
-  },
-  comp: {
-    gain: 0.055,      // 伴奏。前に出ると盤面に集中できない
-    attack: 0.05,     // やわらかく入る（ハンマーで叩かない感じ）
-    release: 1.4,
-    filter: 1600,
-    q: 0.9,
-    detune: 5,
-  },
-  brush: {
-    gain: 0.035,      // ブラシ。あるか無いか分からないくらいで良い
-    length: 0.18,
-    filter: 5200,
-    q: 0.8,
-  },
-};
-
-/** 1小節の拍数 */
-export const BEATS_PER_BAR = 4;
-
-/** 1拍の長さ（秒） */
-export const beatSeconds = (tempo = BGM_TEMPO) => 60 / tempo;
-
-/** その小節のコード */
-export function chordAt(bar) {
-  return PROGRESSION[((bar % PROGRESSION.length) + PROGRESSION.length) % PROGRESSION.length];
-}
-
-/** コードの構成音（Dからの半音） */
-export function chordTones(chord) {
-  return CHORD_SHAPES[chord.shape].map((interval) => chord.root + interval);
-}
-
-/** 半音から周波数へ */
-export function toHz(semitone, root = BGM_ROOT_HZ) {
-  return root * 2 ** (semitone / 12);
+  const others = tracks.filter((t) => t !== previous);
+  const pool = others.length > 0 ? others : tracks;
+  return pool[Math.floor(rng() * pool.length) % pool.length];
 }
 
 /**
- * 1小節ぶんの音を組み立てる。
+ * BGMを鳴らすもの。
  *
- * 戻り値の `beat` は小節の頭からの拍数（スウィングは再生側で掛ける）。
- * `semitone` はDからの半音。
- *
- * 同じ小節でも rng 次第で少し変わるようにしてある。
- * まったく同じだと、2周目で「さっきと同じだ」と気づかれる。
+ * @param createAudio 音を作る関数。テストで差し替えられるようにしてある
+ * @param rng         曲選びの乱数
  */
-export function planBar(bar, rng = Math.random) {
-  const chord = chordAt(bar);
-  const next = chordAt(bar + 1);
-  const tones = chordTones(chord);
-  const notes = [];
+export function createBgmPlayer({ createAudio, rng = Math.random } = {}) {
+  // `Audio` が無い環境（読み上げ専用ブラウザなど）でも遊べるようにする。
+  // 音のために起動できなくなるのが一番まずい
+  const make = createAudio ?? ((src) => {
+    if (typeof Audio === 'undefined') return null;
+    const audio = new Audio(src);
+    audio.loop = true;      // 11分あるので普通は最後まで行かないが、念のため
+    audio.preload = 'none'; // 開いた瞬間に16MB取りに行かせない
+    return audio;
+  });
 
-  // --- ウォーキングベース ---------------------------------------------
-  // 4拍を歩く。1拍目はルート、最後は次のコードへ半音で寄せる。
-  // 「次にどこへ行くか」が聞こえるので、進行が分かりやすくなる。
-  for (let beat = 0; beat < BEATS_PER_BAR; beat++) {
-    let semitone;
-    if (beat === 0) {
-      semitone = chord.root;
-    } else if (beat === BEATS_PER_BAR - 1) {
-      // 次のルートの半音上か下から入る
-      semitone = next.root + (rng() < 0.5 ? 1 : -1);
-    } else {
-      // 3度・5度・7度あたりを拾う
-      semitone = tones[1 + Math.floor(rng() * Math.min(3, tones.length - 1))];
+  let current = null;       // { audio, src, scene }
+  let enabled = false;
+  let scene = null;
+  let ducked = false;
+  const fades = new Map();  // audio -> タイマー
+
+  /** 音量をなめらかに動かす。到達したら done を呼ぶ */
+  function fadeTo(audio, target, seconds, done) {
+    const existing = fades.get(audio);
+    if (existing) clearInterval(existing);
+
+    const steps = Math.max(1, Math.round((seconds * 1000) / FADE_TICK));
+    const from = audio.volume;
+    let step = 0;
+
+    const timer = setInterval(() => {
+      step++;
+      const ratio = Math.min(1, step / steps);
+      audio.volume = Math.max(0, Math.min(1, from + (target - from) * ratio));
+      if (ratio >= 1) {
+        clearInterval(timer);
+        fades.delete(audio);
+        done?.();
+      }
+    }, FADE_TICK);
+
+    fades.set(audio, timer);
+  }
+
+  /** 目標の音量（効果音で引っ込めているかどうかを込みで） */
+  function targetVolume() {
+    return ducked ? BGM_VOLUME * DUCK_RATIO : BGM_VOLUME;
+  }
+
+  function stopNow(entry) {
+    if (!entry) return;
+    const timer = fades.get(entry.audio);
+    if (timer) {
+      clearInterval(timer);
+      fades.delete(entry.audio);
     }
-    // 低すぎ・高すぎを畳む（ベースの音域に収める）
-    while (semitone > 12) semitone -= 12;
-    while (semitone < -4) semitone += 12;
-
-    notes.push({ kind: 'bass', beat, semitone, gain: beat === 0 ? 1 : 0.82 });
+    entry.audio.pause();
   }
 
-  // --- 伴奏（コンピング） ---------------------------------------------
-  // 裏拍に短く置く。毎小節入れると忙しいので、たまに休む。
-  if (rng() < 0.72) {
-    // 2拍目の裏、または3拍目の裏
-    const beat = rng() < 0.5 ? 1.5 : 2.5;
-    // ガイドトーン（3度と7度）＋色づけ。2オクターブ上に置く
-    const voicing = [tones[1], tones[3] ?? tones[2], tones[4] ?? tones[0] + 12]
-      .filter((n) => n !== undefined)
-      .map((n) => n + 24);
-    notes.push({ kind: 'comp', beat, voicing, gain: 1 });
-  }
-  if (rng() < 0.3) {
-    notes.push({
-      kind: 'comp',
-      beat: 3.5,
-      voicing: [tones[1] + 24, tones[3] !== undefined ? tones[3] + 24 : tones[2] + 24],
-      gain: 0.7,
-    });
-  }
+  return {
+    /**
+     * 場面を切り替える。同じ場面をもう一度指定したら、曲は変えない。
+     * ゲーム中に何度も呼ばれても曲が飛ばないようにするため。
+     */
+    setScene(next) {
+      if (scene === next) return;
+      scene = next;
+      if (!enabled) return;
+      this.restart();
+    },
 
-  // --- ブラシ ---------------------------------------------------------
-  // 2拍目と4拍目。ジャズのブラシはここに来る
-  for (const beat of [1, 3]) {
-    notes.push({ kind: 'brush', beat, gain: beat === 3 ? 1 : 0.85 });
-  }
+    /** いまの場面の曲をかけ直す（ゲームを始めるたびに曲を選び直す用） */
+    restart() {
+      if (!enabled || !scene) return;
 
-  return notes;
-}
+      const src = pickTrack(scene, rng, current?.src);
+      if (!src) return;
+      if (current?.src === src && !current.audio.paused) return;
 
-/**
- * 拍の位置を秒に直す。8分の裏拍を後ろにずらして跳ねさせる。
- */
-export function beatToSeconds(beat, tempo = BGM_TEMPO, swing = BGM_SWING) {
-  const spb = beatSeconds(tempo);
-  const whole = Math.floor(beat);
-  const fraction = beat - whole;
-  // 裏拍（0.5）だけ後ろへ。それ以外はそのまま
-  const shifted = fraction === 0.5 ? swing : fraction;
-  return (whole + shifted) * spb;
+      const audio = make(src);
+      if (!audio) return;
+
+      const previous = current;
+      audio.volume = 0;
+      current = { audio, src, scene };
+
+      // iOS は「ユーザーが触った」あとでないと鳴らせない。
+      // 断られても落とさず、次に触られたときに掛け直せばよい
+      const started = audio.play?.();
+      started?.catch?.(() => {});
+
+      fadeTo(audio, targetVolume(), CROSSFADE_SECONDS);
+      if (previous) fadeTo(previous.audio, 0, CROSSFADE_SECONDS, () => stopNow(previous));
+    },
+
+    setEnabled(value) {
+      enabled = value;
+      if (value) {
+        this.restart();
+      } else if (current) {
+        const entry = current;
+        current = null;
+        fadeTo(entry.audio, 0, 0.4, () => stopNow(entry));
+      }
+    },
+
+    isEnabled() {
+      return enabled;
+    },
+
+    /** 効果音の間だけ引っ込める。同じ帯域でぶつかって効果音が埋もれるため */
+    duck() {
+      if (!current || ducked) return;
+      ducked = true;
+      fadeTo(current.audio, targetVolume(), 0.08);
+    },
+
+    unduck() {
+      if (!ducked) return;
+      ducked = false;
+      if (current) fadeTo(current.audio, targetVolume(), 0.7);
+    },
+
+    /** いま鳴っている曲（テストと動作確認用） */
+    currentTrack() {
+      return current?.src ?? null;
+    },
+  };
 }

@@ -8,15 +8,6 @@
 // ベースの基音（70〜150Hz）はそのままでは聞こえないので、
 // のこぎり波を使って倍音を残し、「基音が無くても音程は分かる」状態にしている。
 
-import {
-  BEATS_PER_BAR,
-  BGM_VOICE,
-  beatSeconds,
-  beatToSeconds,
-  planBar,
-  toHz,
-} from './bgm.js';
-
 /** 基準の音（D2）。ここから音階を上がっていく */
 export const COMBO_ROOT_HZ = 73.42;
 
@@ -52,25 +43,16 @@ export function comboGain(chain) {
   return Math.min(0.55, 0.3 + (chain - 1) * 0.05);
 }
 
-/** BGMの音量。伴奏なので、盤面から気をそらさない程度に小さく */
-const BGM_LEVEL = 0.5;
+/** 効果音のあと、BGMを戻すまでの時間(ms)。連鎖の間は下げたままにする */
+const DUCK_HOLD_MS = 700;
 
-/** 何秒先まで音を予約しておくか。これより短いと途切れる */
-const BGM_LOOKAHEAD = 0.4;
-
-/** 予約を見に行く間隔(ms) */
-const BGM_TICK = 120;
-
+let duckTimer = null;
 let context = null;
 let master = null;
 let muted = false;
 
-// BGM。盤面に集中させたいので、既定では鳴らさない
-let bgmGain = null;
-let bgmEnabled = false;
-let bgmTimer = null;
-let bgmBar = 0;        // 次に組み立てる小節
-let bgmNextTime = 0;   // その小節が始まる時刻（AudioContext の時計）
+// BGM は別系統（bgm.js の <audio>）。効果音が鳴る間だけ引っ込めてもらう
+let duckTarget = null;
 
 /**
  * 音を出せる状態にする。
@@ -86,13 +68,8 @@ export function unlockAudio() {
       master = context.createGain();
       master.gain.value = 0.9;
       master.connect(context.destination);
-
-      bgmGain = context.createGain();
-      bgmGain.gain.value = BGM_LEVEL;
-      bgmGain.connect(master);
     }
     if (context.state === 'suspended') context.resume();
-    if (bgmEnabled) startBgm();
   } catch {
     context = null; // 音が出せない環境でも遊べるようにする
   }
@@ -103,19 +80,12 @@ export function setMuted(value) {
   if (master) master.gain.value = value ? 0 : 0.9;
 }
 
-/** BGMを鳴らすか。切り替えは即座に効く */
-export function setBgmEnabled(value) {
-  bgmEnabled = value;
-  if (value) {
-    unlockAudio(); // まだ触られていないなら、ここでは何も起きない
-    startBgm();
-  } else {
-    stopBgm();
-  }
-}
-
-export function isBgmEnabled() {
-  return bgmEnabled;
+/**
+ * 効果音が鳴っている間だけ引っ込めてもらう相手を登録する。
+ * BGM は別系統なので、こちらからは「引っ込めて」と頼むだけにしておく。
+ */
+export function setDuckTarget(target) {
+  duckTarget = target;
 }
 
 export function isMuted() {
@@ -127,7 +97,9 @@ export function playCombo(chain) {
   if (muted || !context) return;
 
   const now = context.currentTime;
-  duckBgm(now);
+  duckTarget?.duck();
+  clearTimeout(duckTimer);
+  duckTimer = setTimeout(() => duckTarget?.unduck(), DUCK_HOLD_MS);
   const frequency = comboFrequency(chain);
   const level = comboGain(chain);
   const v = COMBO_VOICE;
@@ -184,152 +156,3 @@ function playPluck(when) {
   source.start(when);
 }
 
-
-// --- BGM ----------------------------------------------------------------
-//
-// Web Audio の時計に対して「少し先まで」音を予約しておき、
-// setInterval では予約の面倒だけを見る。JavaScript のタイマーは精度が甘いので、
-// タイマーで直接鳴らすとテンポがよれる。
-
-function startBgm() {
-  if (!context || !bgmEnabled || bgmTimer !== null) return;
-  bgmBar = 0;
-  bgmNextTime = context.currentTime + 0.15;
-  if (bgmGain) {
-    // いきなり鳴り出すと驚くので、少しかけて上げる
-    bgmGain.gain.cancelScheduledValues(context.currentTime);
-    bgmGain.gain.setValueAtTime(0.0001, context.currentTime);
-    bgmGain.gain.linearRampToValueAtTime(BGM_LEVEL, context.currentTime + 1.5);
-  }
-  bgmTimer = setInterval(scheduleBgm, BGM_TICK);
-  scheduleBgm();
-}
-
-function stopBgm() {
-  if (bgmTimer !== null) {
-    clearInterval(bgmTimer);
-    bgmTimer = null;
-  }
-  if (bgmGain && context) {
-    const now = context.currentTime;
-    bgmGain.gain.cancelScheduledValues(now);
-    bgmGain.gain.setValueAtTime(bgmGain.gain.value, now);
-    bgmGain.gain.linearRampToValueAtTime(0.0001, now + 0.4);
-  }
-}
-
-/** 予約が切れそうなら、次の小節を組み立てて置く */
-function scheduleBgm() {
-  if (!context || !bgmEnabled) return;
-  const barLength = beatSeconds() * BEATS_PER_BAR;
-
-  while (bgmNextTime < context.currentTime + BGM_LOOKAHEAD) {
-    for (const note of planBar(bgmBar)) {
-      const at = bgmNextTime + beatToSeconds(note.beat);
-      if (note.kind === 'bass') playBass(at, note);
-      else if (note.kind === 'comp') playComp(at, note);
-      else playBrush(at, note);
-    }
-    bgmBar++;
-    bgmNextTime += barLength;
-  }
-}
-
-/** ウォーキングベース。コンボ音と同じ作り方（のこぎり波＋閉じるフィルタ） */
-function playBass(when, note) {
-  const v = BGM_VOICE.bass;
-  const level = v.gain * note.gain;
-
-  const amp = context.createGain();
-  amp.gain.setValueAtTime(0.0001, when);
-  amp.gain.exponentialRampToValueAtTime(level, when + v.attack);
-  amp.gain.exponentialRampToValueAtTime(0.0001, when + v.release);
-
-  const filter = context.createBiquadFilter();
-  filter.type = 'lowpass';
-  filter.Q.value = v.q;
-  filter.frequency.setValueAtTime(v.filterFrom, when);
-  filter.frequency.exponentialRampToValueAtTime(v.filterTo, when + v.filterSweep);
-
-  filter.connect(amp);
-  amp.connect(bgmGain);
-
-  for (const detune of [0, v.detune]) {
-    const osc = context.createOscillator();
-    osc.type = 'sawtooth';
-    osc.frequency.value = toHz(note.semitone);
-    osc.detune.value = detune;
-    osc.connect(filter);
-    osc.start(when);
-    osc.stop(when + v.release + 0.05);
-  }
-}
-
-/** 伴奏。三角波を重ねて、エレピに近い柔らかさにする */
-function playComp(when, note) {
-  const v = BGM_VOICE.comp;
-
-  const amp = context.createGain();
-  amp.gain.setValueAtTime(0.0001, when);
-  amp.gain.linearRampToValueAtTime(v.gain * note.gain, when + v.attack);
-  amp.gain.exponentialRampToValueAtTime(0.0001, when + v.release);
-
-  const filter = context.createBiquadFilter();
-  filter.type = 'lowpass';
-  filter.frequency.value = v.filter;
-  filter.Q.value = v.q;
-
-  filter.connect(amp);
-  amp.connect(bgmGain);
-
-  for (const semitone of note.voicing) {
-    for (const detune of [0, v.detune]) {
-      const osc = context.createOscillator();
-      osc.type = 'triangle';
-      osc.frequency.value = toHz(semitone);
-      osc.detune.value = detune;
-      osc.connect(filter);
-      osc.start(when);
-      osc.stop(when + v.release + 0.05);
-    }
-  }
-}
-
-/** ブラシ。ノイズを撫でるように鳴らす */
-function playBrush(when, note) {
-  const v = BGM_VOICE.brush;
-  const length = Math.floor(context.sampleRate * v.length);
-  const buffer = context.createBuffer(1, length, context.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < length; i++) {
-    const t = i / length;
-    // 立ち上がりをなだらかにすると「シャッ」ではなく「サーッ」になる
-    data[i] = (Math.random() * 2 - 1) * Math.sin(Math.PI * t) ** 2;
-  }
-
-  const source = context.createBufferSource();
-  source.buffer = buffer;
-
-  const band = context.createBiquadFilter();
-  band.type = 'bandpass';
-  band.frequency.value = v.filter;
-  band.Q.value = v.q;
-
-  const gain = context.createGain();
-  gain.gain.value = v.gain * note.gain;
-
-  source.connect(band).connect(gain).connect(bgmGain);
-  source.start(when);
-}
-
-/**
- * コンボが鳴っている間だけBGMを引っ込める。
- * 同じ帯域（ベース）でぶつかるので、これが無いとコンボが埋もれる。
- */
-function duckBgm(now) {
-  if (!bgmGain || !bgmEnabled) return;
-  bgmGain.gain.cancelScheduledValues(now);
-  bgmGain.gain.setValueAtTime(bgmGain.gain.value, now);
-  bgmGain.gain.linearRampToValueAtTime(BGM_LEVEL * 0.35, now + 0.05);
-  bgmGain.gain.linearRampToValueAtTime(BGM_LEVEL, now + 0.9);
-}

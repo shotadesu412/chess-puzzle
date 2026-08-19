@@ -63,6 +63,11 @@ final class BundleSchemeHandler: NSObject, WKURLSchemeHandler {
         case "json": return "application/json"
         case "svg": return "image/svg+xml"
         case "png": return "image/png"
+        // BGM。これが octet-stream のままだと <audio> が鳴らない
+        case "mp3": return "audio/mpeg"
+        case "m4a": return "audio/mp4"
+        case "wav": return "audio/wav"
+        case "ogg": return "audio/ogg"
         default: return "application/octet-stream"
         }
     }

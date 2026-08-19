@@ -7,7 +7,29 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main class="app">
+  <!-- ホーム画面。開いたら最初にここが出る -->
+  <section id="home" class="home">
+    <div class="home-inner">
+      <h1 class="home-title">チェスパズル</h1>
+      <p class="home-sub">同じ色・同じランクを3つ並べて消す</p>
+
+      <button id="home-start" type="button" class="home-start">はじめる</button>
+
+      <label class="home-row" for="variant">
+        <span>モード</span>
+        <select id="variant" aria-label="モード"></select>
+      </label>
+
+      <p id="home-best" class="home-best"></p>
+
+      <div class="home-links">
+        <button id="home-tutorial" type="button">あそび方</button>
+        <button id="home-menu" type="button">ルールと設定</button>
+      </div>
+    </div>
+  </section>
+
+  <main class="app" id="game-screen" hidden>
     <header class="header">
       <div class="header-top">
         <h1>チェスパズル</h1>
@@ -56,15 +78,11 @@
       <div class="menu-body">
         <div class="menu-actions">
           <button id="reset" type="button">はじめから</button>
+          <button id="to-home" type="button">ホームへ</button>
           <button id="tutorial-start" type="button">あそび方</button>
           <button id="mute" type="button" class="mute" aria-label="音を消す">🔊</button>
           <button id="bgm" type="button" class="mute" aria-pressed="false" aria-label="BGMを鳴らす">🎵 BGM</button>
         </div>
-
-        <label class="menu-row" for="variant">
-          <span>モード</span>
-          <select id="variant" aria-label="モード"></select>
-        </label>
 
         <p class="menu-note">この回　最大連鎖 <span id="max-chain">0</span> / 手数 <span id="moves">0</span></p>
 

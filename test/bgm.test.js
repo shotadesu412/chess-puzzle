@@ -1,134 +1,175 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { COMBO_ROOT_HZ } from '../src/audio.js';
 import {
-  BEATS_PER_BAR,
-  BGM_ROOT_HZ,
-  BGM_SWING,
-  CHORD_SHAPES,
-  PROGRESSION,
-  beatSeconds,
-  beatToSeconds,
-  chordAt,
-  chordTones,
-  planBar,
-  toHz,
+  BGM_TRACKS,
+  BGM_VOLUME,
+  DUCK_RATIO,
+  createBgmPlayer,
+  pickTrack,
 } from '../src/bgm.js';
 import { seededRng } from './helpers.js';
 
-test('BGMとコンボ音は同じ調（違うとベースがぶつかって濁る）', () => {
-  assert.equal(BGM_ROOT_HZ, COMBO_ROOT_HZ);
-});
+/** <audio> のかわり。呼ばれたことを覚えておく */
+function fakeAudio(src) {
+  return {
+    src,
+    volume: 0,
+    paused: true,
+    loop: false,
+    play() { this.paused = false; return Promise.resolve(); },
+    pause() { this.paused = true; },
+  };
+}
 
-test('コード進行は8小節でひと回りする', () => {
-  assert.equal(PROGRESSION.length, 8);
-  assert.deepEqual(chordAt(0), chordAt(8));
-  assert.deepEqual(chordAt(3), chordAt(11));
-});
+/** フェードを待たずに済むよう、音量を即座に目標へ入れるプレイヤー */
+function makePlayer(rng = seededRng(1)) {
+  const created = [];
+  const player = createBgmPlayer({
+    createAudio: (src) => {
+      const audio = fakeAudio(src);
+      created.push(audio);
+      return audio;
+    },
+    rng,
+  });
+  return { player, created };
+}
 
-test('進行の最後はドミナントで、頭のマイナーへ戻る', () => {
-  assert.equal(chordAt(PROGRESSION.length - 1).shape, 'dom7b9');
-  assert.equal(chordAt(0).shape, 'm9');
-});
-
-test('どのコードも定義された形を使っている', () => {
-  for (const chord of PROGRESSION) {
-    assert.ok(CHORD_SHAPES[chord.shape], `${chord.shape} が定義されていること`);
+test('場面ごとに曲が決まっている', () => {
+  assert.equal(BGM_TRACKS.home.length, 1, 'ホームは1曲');
+  assert.equal(BGM_TRACKS.game.length, 2, 'ゲーム中は2曲');
+  for (const list of Object.values(BGM_TRACKS)) {
+    for (const src of list) assert.match(src, /^assets\/bgm\/.+\.mp3$/);
   }
 });
 
-test('1小節にはベースが4拍ぶん入る', () => {
-  const notes = planBar(0, seededRng(1));
-  const bass = notes.filter((n) => n.kind === 'bass');
-  assert.equal(bass.length, BEATS_PER_BAR);
-  assert.deepEqual(bass.map((n) => n.beat), [0, 1, 2, 3]);
+test('ホームとゲームで曲が重ならない', () => {
+  const overlap = BGM_TRACKS.home.filter((t) => BGM_TRACKS.game.includes(t));
+  assert.deepEqual(overlap, [], 'ホームの曲がゲーム中にも流れると場面が変わった感じがしない');
 });
 
-test('ベースの1拍目はコードのルート', () => {
-  for (let bar = 0; bar < PROGRESSION.length; bar++) {
-    const first = planBar(bar, seededRng(bar + 1)).find((n) => n.kind === 'bass');
-    assert.equal(first.semitone, chordAt(bar).root, `小節${bar}`);
-  }
+test('候補が1曲ならそれを返す', () => {
+  assert.equal(pickTrack('home', seededRng(1)), BGM_TRACKS.home[0]);
 });
 
-test('ベースは音域に収まる（低すぎ・高すぎで聞こえなくならない）', () => {
-  const rng = seededRng(7);
-  for (let bar = 0; bar < 200; bar++) {
-    for (const note of planBar(bar, rng)) {
-      if (note.kind !== 'bass') continue;
-      assert.ok(note.semitone >= -4 && note.semitone <= 12,
-        `小節${bar} の ${note.semitone} が音域外`);
-      const hz = toHz(note.semitone);
-      assert.ok(hz > 50 && hz < 160, `${hz.toFixed(1)}Hz は低音の範囲外`);
-    }
-  }
-});
-
-test('ブラシは2拍目と4拍目に入る', () => {
-  const brush = planBar(0, seededRng(1)).filter((n) => n.kind === 'brush');
-  assert.deepEqual(brush.map((n) => n.beat), [1, 3]);
-});
-
-test('伴奏はコードの構成音だけを使う', () => {
+test('直前と同じ曲は選ばない', () => {
   const rng = seededRng(3);
-  for (let bar = 0; bar < 200; bar++) {
-    const tones = chordTones(chordAt(bar));
-    for (const note of planBar(bar, rng)) {
-      if (note.kind !== 'comp') continue;
-      for (const semitone of note.voicing) {
-        // 2オクターブ上に置いてあるので戻して比べる
-        const base = semitone - 24;
-        assert.ok(tones.includes(base) || tones.includes(base - 12),
-          `小節${bar}: ${semitone} はコード外の音`);
-      }
-    }
+  for (let i = 0; i < 50; i++) {
+    const previous = BGM_TRACKS.game[i % 2];
+    assert.notEqual(pickTrack('game', rng, previous), previous);
   }
 });
 
-test('伴奏は裏拍に置く（表に置くとベースとぶつかって忙しくなる）', () => {
-  const rng = seededRng(5);
-  for (let bar = 0; bar < 100; bar++) {
-    for (const note of planBar(bar, rng)) {
-      if (note.kind !== 'comp') continue;
-      assert.equal(note.beat % 1, 0.5, `小節${bar}: 拍${note.beat} は裏拍でない`);
-    }
-  }
+test('候補が全部「直前の曲」でも詰まらない', () => {
+  // ホームは1曲しかないので、previous を渡しても選べないと止まってしまう
+  assert.equal(pickTrack('home', seededRng(1), BGM_TRACKS.home[0]), BGM_TRACKS.home[0]);
 });
 
-test('伴奏は毎小節は入らない（休むから控えめに聞こえる）', () => {
-  const rng = seededRng(9);
-  let bars = 0;
-  let withComp = 0;
-  for (let bar = 0; bar < 200; bar++) {
-    bars++;
-    if (planBar(bar, rng).some((n) => n.kind === 'comp')) withComp++;
-  }
-  const ratio = withComp / bars;
-  assert.ok(ratio > 0.5 && ratio < 0.95, `伴奏の入る割合が ${ratio.toFixed(2)}`);
+test('知らない場面なら null（鳴らさない）', () => {
+  assert.equal(pickTrack('nowhere', seededRng(1)), null);
 });
 
-test('同じ小節でも毎回すこし違う（2周目で気づかれないように）', () => {
-  const a = JSON.stringify(planBar(0, seededRng(1)));
-  const b = JSON.stringify(planBar(0, seededRng(999)));
-  assert.notEqual(a, b);
+test('鳴らす設定にすると、いまの場面の曲が始まる', () => {
+  const { player, created } = makePlayer();
+  player.setScene('home');
+  player.setEnabled(true);
+
+  assert.equal(created.length, 1);
+  assert.equal(created[0].src, BGM_TRACKS.home[0]);
+  assert.equal(created[0].paused, false);
+  assert.equal(player.currentTrack(), BGM_TRACKS.home[0]);
 });
 
-test('スウィングで裏拍が後ろにずれる', () => {
-  const spb = beatSeconds();
-  assert.equal(beatToSeconds(0), 0);
-  assert.equal(beatToSeconds(1), spb);
-  // 裏拍だけ後ろへ
-  assert.ok(beatToSeconds(1.5) > 1.5 * spb, '裏拍が後ろにずれること');
-  assert.equal(beatToSeconds(1.5), (1 + BGM_SWING) * spb);
+test('切っている間は曲を作らない', () => {
+  const { player, created } = makePlayer();
+  player.setScene('home');
+  player.setScene('game');
+  assert.equal(created.length, 0);
+  assert.equal(player.currentTrack(), null);
 });
 
-test('音は小節をはみ出さない', () => {
-  const rng = seededRng(11);
-  for (let bar = 0; bar < 100; bar++) {
-    for (const note of planBar(bar, rng)) {
-      assert.ok(note.beat >= 0 && note.beat < BEATS_PER_BAR,
-        `拍${note.beat} が小節の外`);
-    }
-  }
+test('場面が変わると曲も変わる', () => {
+  const { player } = makePlayer();
+  player.setScene('home');
+  player.setEnabled(true);
+  const home = player.currentTrack();
+
+  player.setScene('game');
+  assert.notEqual(player.currentTrack(), home);
+  assert.ok(BGM_TRACKS.game.includes(player.currentTrack()));
+});
+
+test('同じ場面をもう一度指定しても曲は変わらない', () => {
+  const { player, created } = makePlayer();
+  player.setScene('game');
+  player.setEnabled(true);
+  const first = player.currentTrack();
+
+  player.setScene('game');
+  player.setScene('game');
+  assert.equal(player.currentTrack(), first, 'ゲーム中に曲が飛ばないこと');
+  assert.equal(created.length, 1);
+});
+
+test('restart はゲーム中の曲を選び直す', () => {
+  const { player } = makePlayer(seededRng(5));
+  player.setScene('game');
+  player.setEnabled(true);
+
+  const first = player.currentTrack();
+  player.restart();
+  assert.notEqual(player.currentTrack(), first, '始め直したら別の曲になること');
+});
+
+test('切ると鳴っていた曲が止まる', async () => {
+  const { player, created } = makePlayer();
+  player.setScene('home');
+  player.setEnabled(true);
+  assert.equal(created[0].paused, false);
+
+  player.setEnabled(false);
+  assert.equal(player.currentTrack(), null);
+
+  // フェードしてから止まる
+  await new Promise((r) => setTimeout(r, 600));
+  assert.equal(created[0].paused, true);
+});
+
+test('効果音の間は音量が下がり、あとで戻る', async () => {
+  const { player, created } = makePlayer();
+  player.setScene('home');
+  player.setEnabled(true);
+  await new Promise((r) => setTimeout(r, 1400)); // 立ち上がりを待つ
+
+  const normal = created[0].volume;
+  assert.ok(Math.abs(normal - BGM_VOLUME) < 0.02, `通常の音量が ${normal}`);
+
+  player.duck();
+  await new Promise((r) => setTimeout(r, 200));
+  assert.ok(created[0].volume < normal, '効果音の間は下がること');
+  assert.ok(Math.abs(created[0].volume - BGM_VOLUME * DUCK_RATIO) < 0.02);
+
+  player.unduck();
+  await new Promise((r) => setTimeout(r, 900));
+  assert.ok(Math.abs(created[0].volume - BGM_VOLUME) < 0.02, '戻ること');
+
+  player.setEnabled(false);
+});
+
+test('鳴らせない環境でも落ちない（iOSは触られるまで鳴らせない）', () => {
+  const player = createBgmPlayer({
+    createAudio: (src) => ({
+      src, volume: 0, paused: true,
+      play: () => Promise.reject(new Error('NotAllowedError')),
+      pause() {},
+    }),
+    rng: seededRng(1),
+  });
+
+  assert.doesNotThrow(() => {
+    player.setScene('home');
+    player.setEnabled(true);
+    player.setEnabled(false);
+  });
 });

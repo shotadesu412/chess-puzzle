@@ -45,3 +45,4 @@ targets:
           cp "$SRCROOT/../index.html" "$DEST/"
           cp "$SRCROOT/../style.css" "$DEST/"
           cp -R "$SRCROOT/../src" "$DEST/src"
+          cp -R "$SRCROOT/../assets" "$DEST/assets"

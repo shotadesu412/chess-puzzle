@@ -86,6 +86,11 @@ function installDom() {
   });
   globalThis.requestAnimationFrame = (fn) => setTimeout(() => fn(0), 0);
   globalThis.AudioContext = class { constructor() { this.state = 'suspended'; } };
+  globalThis.Audio = class {
+    constructor(src) { this.src = src; this.volume = 0; this.paused = true; }
+    play() { this.paused = false; return Promise.resolve(); }
+    pause() { this.paused = true; }
+  };
 
   return store;
 }
@@ -144,4 +149,18 @@ test('メニューから「はじめから」を押すと盤面に戻る', () =>
 
   document.getElementById('reset').fire('click');
   assert.equal(menu.hidden, true, '押したらメニューは閉じること');
+});
+
+test('「はじめる」でゲーム画面へ、「ホームへ」で戻る', () => {
+  const { document } = globalThis;
+  const home = document.getElementById('home');
+  const screen = document.getElementById('game-screen');
+
+  document.getElementById('home-start').fire('click');
+  assert.equal(home.hidden, true, 'ホームが隠れること');
+  assert.equal(screen.hidden, false, 'ゲーム画面が出ること');
+
+  document.getElementById('to-home').fire('click');
+  assert.equal(home.hidden, false, 'ホームに戻ること');
+  assert.equal(screen.hidden, true, 'ゲーム画面が隠れること');
 });

@@ -1,6 +1,7 @@
 // エントリーポイント。入力 → ゲームロジック → 描画 をつなぐ。
 
-import { isBgmEnabled, isMuted, playCombo, setBgmEnabled, setMuted, unlockAudio } from './audio.js';
+import { isMuted, playCombo, setDuckTarget, setMuted, unlockAudio } from './audio.js';
+import { createBgmPlayer } from './bgm.js';
 import { PieceType } from './pieces.js';
 import { applyMove, canMove, createGame } from './game.js';
 import { allPlayableMoves, clearedBy, hasAnyMove, playableSquares } from './moves.js';
@@ -426,7 +427,8 @@ function startNewGame() {
 resetButton.addEventListener('click', () => {
   if (busy) return;
   startNewGame();
-  closeMenu(); // 押したら盤面に戻す
+  bgm.restart(); // 始め直すたびに曲も選び直す
+  closeMenu();   // 押したら盤面に戻す
 });
 
 // 駒の動き確認表。実際の移動判定から作るので、ルールを変えても古くならない
@@ -481,19 +483,9 @@ tutorialSkipButton.addEventListener('click', () => {
   endTutorial();
 });
 
-let seenTutorial = false;
-try {
-  seenTutorial = localStorage.getItem(TUTORIAL_SEEN_KEY) === '1';
-} catch {
-  seenTutorial = true; // 記録できない環境では自動再生しない
-}
-
-if (seenTutorial) {
-  draw();
-  scheduleIdleHint();
-} else {
-  startTutorial();
-}
+// 起動時に出るのはホーム画面。チュートリアルの初回再生は
+// 「はじめる」を押したときに判定する（画面の後ろで勝手に始まらないように）
+draw();
 
 // --- ルール説明の数字は実装から作る -------------------------------------
 //
@@ -615,25 +607,86 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeMenu();
 });
 
-// --- BGM ----------------------------------------------------------------
+// --- 画面の切り替えとBGM -------------------------------------------------
 //
-// 既定では鳴らさない。音が出ると困る場面（電車など）で開いてすぐ鳴るのは避けたい。
-// 一度選んだら覚えておく。
+// ホーム画面 → ゲーム画面 の2枚。曲は場面ごとに変える。
+// 「はじめる」を押させることで、iOS の「触られるまで音を出せない」制限も
+// ここで一緒に解ける。
 
 const BGM_KEY = 'chess-puzzle.bgm';
+const homeEl = document.getElementById('home');
+const gameScreenEl = document.getElementById('game-screen');
 const bgmButton = document.getElementById('bgm');
+
+const bgm = createBgmPlayer();
+setDuckTarget(bgm); // 効果音の間だけBGMを引っ込めてもらう
 
 function updateBgmButton() {
   if (!bgmButton) return;
-  const on = isBgmEnabled();
+  const on = bgm.isEnabled();
   bgmButton.textContent = on ? '🎵 BGM' : '🎵 BGM オフ';
   bgmButton.setAttribute('aria-pressed', String(on));
   bgmButton.setAttribute('aria-label', on ? 'BGMを止める' : 'BGMを鳴らす');
 }
 
+/** ホーム画面へ戻る。遊んでいた記録は「途中でやめた」として残す */
+function showHome() {
+  closeMenu();
+  clearIdleHint();
+  if (tutorialStep !== null) {
+    tutorialStep = null;
+    awaitingNext = false;
+    setTutorialUI(false);
+  }
+  log.endGame({ game, why: 'quit' });
+  homeEl.hidden = false;
+  gameScreenEl.hidden = true;
+  updateHomeBest();
+  bgm.setScene('home');
+}
+
+/** ゲーム画面へ。曲もゲーム中のものに選び直す */
+function showGame() {
+  homeEl.hidden = true;
+  gameScreenEl.hidden = false;
+  bgm.setScene('game');
+  bgm.restart(); // 始めるたびに曲を選び直す（2曲を行き来する）
+}
+
+function updateHomeBest() {
+  const el = document.getElementById('home-best');
+  if (!el) return;
+  const { games, best } = log.summary();
+  el.textContent = games === 0 ? '' : `最高 ${best.toLocaleString()}点 / ${games}ゲーム`;
+}
+
+document.getElementById('home-start')?.addEventListener('click', () => {
+  unlockAudio(); // 触られた今のうちに音を解禁しておく
+  showGame();
+  // 初回だけ、遊び方から始める
+  let seen = true;
+  try {
+    seen = localStorage.getItem(TUTORIAL_SEEN_KEY) === '1';
+  } catch {
+    // 読めないならチュートリアルは出さない（毎回出ると鬱陶しい）
+  }
+  if (seen) startNewGame();
+  else startTutorial();
+});
+
+document.getElementById('home-tutorial')?.addEventListener('click', () => {
+  unlockAudio();
+  showGame();
+  startTutorial();
+});
+
+document.getElementById('home-menu')?.addEventListener('click', openMenu);
+document.getElementById('to-home')?.addEventListener('click', showHome);
+
 bgmButton?.addEventListener('click', () => {
-  const next = !isBgmEnabled();
-  setBgmEnabled(next);
+  unlockAudio();
+  const next = !bgm.isEnabled();
+  bgm.setEnabled(next);
   try {
     localStorage.setItem(BGM_KEY, next ? '1' : '0');
   } catch {
@@ -642,9 +695,13 @@ bgmButton?.addEventListener('click', () => {
   updateBgmButton();
 });
 
+// 既定はオン。曲を用意してあるので、まず聴いてもらう。
+// ただし iOS は触られるまで鳴らないので、実際に流れ出すのは最初のタップから
 try {
-  if (localStorage.getItem(BGM_KEY) === '1') setBgmEnabled(true);
+  bgm.setEnabled(localStorage.getItem(BGM_KEY) !== '0');
 } catch {
-  // 読めなくても既定（オフ）で動く
+  bgm.setEnabled(true);
 }
+bgm.setScene('home');
 updateBgmButton();
+updateHomeBest();
